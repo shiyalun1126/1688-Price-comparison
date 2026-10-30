@@ -86,7 +86,9 @@ def _merge_rows(products: list[Product], quotes: list[Quote],
         rows[p.id] = _product_row(p, shops.get(p.shop_id))
 
     # 再用报价覆盖同商品（报价更可信）
-    for q in quotes:
+    # 同一商品可能有多条报价（多次询价/多轮谈判），按报价时间升序处理，
+    # 让最新一条最终生效（否则 list_quotes 的价格排序会让旧价覆盖新价）
+    for q in sorted(quotes, key=lambda x: x.quoted_at):
         p = pmap.get(q.product_id)
         qr = _quote_row(q, p, shops.get(q.shop_id))
         # 保留标价作为参考

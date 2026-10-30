@@ -1,0 +1,32 @@
+[project]
+name = "1688-price-compare-agent"
+version = "0.1.0"
+description = "以款找货源 + 比价的服装智能体（1688 单品级比价）"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "Pillow>=10.0",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

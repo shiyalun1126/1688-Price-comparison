@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>1688 候选导入 · 智能书签</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 860px; margin: 32px auto; padding: 0 20px; color:#1f2937; line-height:1.7; }
+  h1 { font-size: 20px; }
+  .bookmarklet { display:inline-block; background:#2563eb; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; box-shadow:0 2px 6px rgba(37,99,235,.35); }
+  .box { background:#f8fafc; border:1px solid #e3e5e8; border-radius:8px; padding:14px 18px; margin:14px 0; }
+  code { background:#eef2ff; padding:1px 6px; border-radius:4px; font-size:13px; }
+  .muted { color:#6b7280; font-size:13px; }
+  select { padding:7px 10px; border:1px solid #e3e5e8; border-radius:6px; font-size:14px; }
+  textarea { width:100%; padding:8px 10px; border:1px solid #e3e5e8; border-radius:6px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>📥 1688 候选商品 · 智能导入</h1>
+<p class="muted">支持<strong>搜索列表页批量导入</strong>和<strong>商品详情页单条导入</strong>。</p>
+
+<div class="box">
+  <h2>第 0 步：选择目标款</h2>
+  <select id="target-select"></select>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:8px">
+    <input type="checkbox" id="create-new-target">
+    <span>将此页商品设为<b>新目标款</b>（用于面试演示）</span>
+  </label>
+  <p class="muted">勾选后，点书签会先创建新目标款，再把当前商品挂在这个目标款下。</p>
+</div>
+
+<div class="box">
+  <h2>第 1 步：拖书签到浏览器</h2>
+  <a id="bm-btn" class="bookmarklet" href="#" onclick="return false;">📥 导入1688商品</a>
+  <p class="muted">拖动蓝色按钮到书签栏；拖不动就右键复制链接地址新建书签。</p>
+</div>
+
+<div class="box">
+  <h2>第 2 步：使用方法</h2>
+  <p><strong>方式 A（推荐）：</strong>在 1688 <code>s.1688.com/selloffer/...</code> 搜索列表页点书签 → 自动抓取页面上所有商品 → 批量导入</p>
+  <p><strong>方式 B：</strong>在 1688 商品详情页点书签 → 抓取当前商品 → 单条导入</p>
+</div>
+
+<div class="box">
+  <h2>排查：书签源码</h2>
+  <textarea id="bm-code" rows="10" readonly></textarea>
+</div>
+
+<script>
+const API_BASE = location.origin;
+let currentTargetId = null;
+
+async function loadTargets() {
+  const list = await (await fetch('/api/targets')).json();
+  const sel = document.getElementById('target-select');
+  sel.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  if (list.length) currentTargetId = list[0].id;
+  sel.onchange = () => { currentTargetId = sel.value; renderBM(); };
+  renderBM();
+}
+
+// 核心：智能抓取脚本（根据页面类型自动适配）
+function generateBookmarklet(targetId, createNew) {
+  var TARGET_ID=targetId;
+  var CREATE_NEW=createNew;
+  return `(function(){
+var TARGET_ID='${targetId}';
+var CREATE_NEW=${createNew};
+var API='${API_BASE}/api/import-product';
+var CREATE_API='${API_BASE}/api/targets/from-url';
+var HOST=location.hostname;
+var PAGE_TYPE=HOST==='detail.1688.com'?'detail':(HOST.indexOf('s.1688.com')>=0?'search':'other');
+function $(s){return document.querySelector(s);}
+function $$(s){return Array.from(document.querySelectorAll(s));}
+function txt(el){return el?el.innerText.trim():'';}
+function getPrice(text){var m=text.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);return m?parseFloat(m[1]):null;}
+function extractTitle(text){var lines=text.split(/\\n|\\r/).map(l=>l.trim()).filter(l=>l.length>2&&l.length<100);return lines.length>0?lines[0]:'';}
+
+async function createTargetFromPage(){
+  var title=txt($('h1'))||document.title.replace(/[-_].*$/,'').trim();
+  var img='';
+  $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
+  if(!img){alert('❌ 没找到图片，无法创建目标款');return null;}
+  var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
+  var price=pm?parseFloat(pm[1]):null;
+  var payload={title:title,image_url:img,price:price,category:'衬衫',description:''};
+  var r=await fetch(CREATE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  var d=await r.json();
+  if(d.ok && d.id){return d.id;}
+  alert('❌ 创建目标款失败：'+(d.error||'未知错误'));
+  return null;
+}
+
+if(PAGE_TYPE==='search'){
+  // 搜索列表页：批量抓取
+  var cards=$$('.space-common-offerlist, .page-offerlist, .search-offer-wrapper.major-offer');
+  if(cards.length===0) cards=$$('div[class*="card"],div[class*="item"],div[class*="offer"]').filter(function(c){return c.querySelector('img')&&c.querySelector('a[href*="offer"]');});
+  if(cards.length===0){alert('❌ 没找到商品卡片，请确认在 1688 搜索列表页');return;}
+  var imported=0,failed=0;
+  async function importOne(card,i){
+    try{
+      var imgs=card.querySelectorAll('img'),links=card.querySelectorAll('a[href*="offer"]');
+      if(imgs.length===0||links.length===0){failed++;return;}
+      var imgSrc=imgs[0].src,linkUrl=links[0].href;
+      if(!imgSrc||!linkUrl){failed++;return;}
+      var shopRow=$('.offer-shop-row',card)||$('.offer-shop-row');
+      var shopName=txt(shopRow)||'1688店铺';
+      var title=extractTitle(txt(card))||'1688商品';
+      var price=getPrice(txt(card));
+      var payload={target_style_id:TARGET_ID,title:title,image_url:imgSrc,price:price,url:linkUrl,shop_name:shopName};
+      var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      var d=await r.json();
+      if(d.ok){imported++;}else{console.error('导入失败:',d.error);failed++;}
+    }catch(e){console.error('处理卡片出错:',e);failed++;}
+  }
+  (async function(){
+    for(var i=0;i<cards.length && i<20;i++){await importOne(cards[i],i);}
+    alert('✅ 批量导入完成\\n成功: '+imported+' 个\\n失败: '+failed+' 个');
+  })();
+}else if(PAGE_TYPE==='detail'){
+  // 商品详情页：单条抓取
+  if(CREATE_NEW){
+    // 先创建新目标款
+    var newId=await createTargetFromPage();
+    if(!newId){return;}
+    TARGET_ID=newId;
+  }
+  var title=txt($('h1'))||document.title.replace(/[-_].*$/,'').trim();
+  var img='';
+  $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
+  var price=null;
+  var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
+  if(pm)price=parseFloat(pm[1]);
+  var shopRow=$('.offer-shop-row')||$('.company-name')||$('.shop-name');
+  var shopName=txt(shopRow)||'1688店铺';
+  var offerId=(location.href.match(/offer\\/(\\d+)/)||[])[1]||'';
+  var url='http://detail.1688.com/offer/'+offerId+'.html';
+  fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    target_style_id:TARGET_ID,title:title,image_url:img,price:price,url:url,shop_name:shopName.trim()
+  })}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){alert(CREATE_NEW?('✅ 已创建目标款《'+title+'》并导入'):('✅ 导入成功：'+title));}
+    else{alert('❌ 导入失败：'+(d.error||'未知错误'));}
+  }).catch(function(e){alert('❌ 请求失败：'+e.message);});
+}else{
+  alert('⚠️ 请在 1688 搜索列表页(s.1688.com)或商品详情页(detail.1688.com)使用此书签');
+}
+})();`;
+}
+
+function renderBM() {
+  var createNew = document.getElementById('create-new-target').checked;
+  var code = generateBookmarklet(currentTargetId, createNew);
+  var oneLine = 'javascript:' + encodeURIComponent(code);
+  document.getElementById('bm-btn').href = oneLine;
+  document.getElementById('bm-code').value = oneLine;
+}
+
+loadTargets();
+document.getElementById('create-new-target').onchange = renderBM;
+</script>
+</body>
+</html>

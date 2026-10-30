@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# 环境与密钥
+.env
+.env.local
+*.key
+secrets/
+
+# 数据（本地库、上传图、临时）
+data/*.db
+data/*.sqlite*
+data/uploads/
+data/images/
+
+# 工具
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 权限修复产物
+.acl-recovery/

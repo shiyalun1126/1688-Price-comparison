@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>1688 价格抓取诊断</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 32px auto; padding: 0 20px; line-height:1.7; }
+  h1 { font-size: 20px; }
+  .bookmarklet { display:inline-block; background:#059669; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; }
+  .box { background:#f8fafc; border:1px solid #e3e5e8; border-radius:8px; padding:14px 18px; margin:14px 0; }
+  textarea { width:100%; padding:10px; border:1px solid #e3e5e8; border-radius:6px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  .muted { color:#6b7280; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>🔍 1688 价格抓取诊断</h1>
+<p class="muted">在 1688 搜索列表页点一下，把结果发我，我就能修好价格抓取。</p>
+
+<div class="box">
+  <h2>第 1 步：拖这个按钮到书签栏</h2>
+  <a id="bm" class="bookmarklet" href="#" onclick="return false;">🔍 诊断价格</a>
+</div>
+
+<div class="box">
+  <h2>第 2 步：在 1688 搜索列表页点它</h2>
+  <p class="muted">点完会弹出一个 JSON，全选复制发给我。</p>
+</div>
+
+<div class="box">
+  <h2>结果</h2>
+  <textarea id="out" rows="16" placeholder="点击书签后在此显示，或直接从弹窗复制"></textarea>
+</div>
+
+<script>
+const code = `(function(){
+function txt(el){return el?el.innerText.trim():'';}
+var cards = document.querySelectorAll('.space-common-offerlist, .page-offerlist, .search-offer-wrapper.major-offer');
+if (cards.length === 0) {
+  cards = Array.from(document.querySelectorAll('div')).filter(function(c){
+    return c.querySelector('img') && c.querySelector('a[href*="offer"]');
+  });
+}
+var out = {cardCount: cards.length, samples: []};
+for (var i = 0; i < cards.length && i < 3; i++) {
+  var c = cards[i];
+  var fullText = c.innerText || '';
+  // 找所有含数字+元/¥ 的文本片段
+  var priceCandidates = [];
+  var priceEls = c.querySelectorAll('[class*="price"],[class*="Price"],[class*="amount"]');
+  for (var j = 0; j < priceEls.length && j < 8; j++) {
+    priceCandidates.push({cls: priceEls[j].className.toString().slice(0,80), text: txt(priceEls[j]).slice(0,60)});
+  }
+  out.samples.push({
+    cls: c.className.toString().slice(0,100),
+    innerTextFirst500: fullText.slice(0, 500),
+    priceEls: priceCandidates,
+    hasYen: /\\u00A5|¥/.test(fullText),
+    yenMatches: (fullText.match(/[\\u00A5¥]\\s*\\d+(?:\\.\\d+)?/g) || []).slice(0, 5)
+  });
+}
+var text = JSON.stringify(out, null, 2);
+try {
+  navigator.clipboard.writeText(text);
+  prompt('已复制到剪贴板，也可从下面复制：', text);
+} catch(e) {
+  prompt('请复制以下内容：', text);
+}
+})();`;
+document.getElementById('bm').href = 'javascript:' + encodeURIComponent(code);
+</script>
+</body>
+</html>

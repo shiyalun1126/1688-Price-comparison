@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>1688 候选导入 · 书签脚本</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 860px; margin: 32px auto; padding: 0 20px; color:#1f2937; line-height:1.7; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin-top: 26px; }
+  .bookmarklet { display:inline-block; background:#2563eb; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; box-shadow:0 2px 6px rgba(37,99,235,.35); }
+  .bookmarklet:active { transform: translateY(1px); }
+  .box { background:#f8fafc; border:1px solid #e3e5e8; border-radius:8px; padding:14px 18px; margin:14px 0; }
+  code { background:#eef2ff; padding:1px 6px; border-radius:4px; font-size:13px; }
+  .step { margin: 10px 0; }
+  .muted { color:#6b7280; font-size:13px; }
+  .warn { background:#fef3c7; border-color:#fde68a; }
+  select, input { padding:7px 10px; border:1px solid #e3e5e8; border-radius:6px; font-size:14px; }
+  textarea { width:100%; padding:8px 10px; border:1px solid #e3e5e8; border-radius:6px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>1688 候选商品 · 一键导入书签</h1>
+<p class="muted">你在 1688 商品页点一下书签，系统自动抓取标题、主图、价格并入库，无需手动截图录入。</p>
+
+<div class="box">
+  <h2>第 0 步：选择要导入到哪个目标款</h2>
+  <select id="target-select"></select>
+  <p class="muted">书签脚本会读取这个选择，把商品导入到对应目标款下。</p>
+</div>
+
+<div class="box">
+  <h2>第 1 步：把下面的按钮拖到浏览器书签栏</h2>
+  <p>
+    <a id="bookmarklet" class="bookmarklet" href="#" onclick="return false;">📥 导入到1688比价</a>
+  </p>
+  <p class="muted">拖动这个蓝色按钮到你的书签栏（若浏览器不允许拖拽，右键复制链接地址，手动新建书签并粘贴）。</p>
+</div>
+
+<div class="box">
+  <h2>第 2 步：在 1688 商品页点击书签</h2>
+  <div class="step">① 打开任意一个 1688 商品详情页（<code>detail.1688.com/offer/xxx.html</code>）</div>
+  <div class="step">② 点击书签栏里的「📥 导入到1688比价」</div>
+  <div class="step">③ 看到提示「✅ 导入成功」即完成，回到本系统的管理页面刷新即可看到</div>
+</div>
+
+<div class="box warn">
+  <h2>注意事项</h2>
+  <ul class="muted" style="margin:0;padding-left:20px">
+    <li>本系统需在本机运行（<code>http://127.0.0.1:8000</code>），书签脚本会把数据提交到本机。</li>
+    <li>若点击后没反应，按 F12 打开控制台查看报错，常见原因是浏览器拦截了混合内容。</li>
+    <li>抓取的是页面上当前展示的标题/主图/价格，确保页面已完整加载。</li>
+  </ul>
+</div>
+
+<div class="box">
+  <h2>排查：书签脚本源码</h2>
+  <p class="muted">如需手动新建书签，把下面代码作为书签的 URL（名称随意）：</p>
+  <textarea id="bm-code" rows="10" readonly></textarea>
+</div>
+
+<script>
+const API_BASE = location.origin;   // 本系统的地址
+
+let currentTargetId = null;
+
+async function loadTargets() {
+  const list = await (await fetch('/api/targets')).json();
+  const sel = document.getElementById('target-select');
+  sel.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  if (list.length) currentTargetId = list[0].id;
+  sel.onchange = () => { currentTargetId = sel.value; renderBookmarklet(); };
+  renderBookmarklet();
+}
+
+function renderBookmarklet() {
+  // 书签脚本：在 1688 商品页执行，抓取标题/主图/价格，POST 回本系统
+  const code = `(function(){
+var TARGET='${currentTargetId}';
+var API='${API_BASE}/api/import-product';
+function txt(s){var e=document.querySelector(s);return e?e.innerText.trim():'';}
+var title = txt('h1') || document.title.replace(/[-_].*$/,'').trim();
+var img = '';
+var cand = document.querySelectorAll('img');
+for (var i=0;i<cand.length;i++){
+  var w=cand[i].naturalWidth||0;
+  if (w>200 && cand[i].src && !cand[i].src.startsWith('data:')) { img=cand[i].src; break; }
+}
+var price = null;
+var pm = document.body.innerText.match(/([0-9]+(?:\\.[0-9]+)?)\\s*元/);
+if (pm) price = parseFloat(pm[1]);
+var offerId = (location.href.match(/offer\\/(\\d+)/)||[])[1] || '';
+var shopName = txt('.shop-name') || txt('.company-name') || (document.title.match(/^([^-|]+)/)||[])[1] || '1688店铺';
+fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  target_style_id: TARGET, title: title, image_url: img, price: price,
+  url: location.href, shop_name: shopName.trim()
+})}).then(function(r){return r.json();}).then(function(d){
+  if(d.ok){ alert('✅ 导入成功：'+title); }
+  else { alert('❌ 导入失败：'+(d.error||'未知错误')); }
+}).catch(function(e){ alert('❌ 请求失败，请确认本系统正在运行：'+e.message); });
+})();`;
+  // 压缩成单行书签
+  const oneLine = 'javascript:' + encodeURIComponent(code);
+  document.getElementById('bm-code').value = oneLine;
+  const el = document.getElementById('bookmarklet');
+  el.href = oneLine;
+}
+
+loadTargets();
+</script>
+</body>
+</html>

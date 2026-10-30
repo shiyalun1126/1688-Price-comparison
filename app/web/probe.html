@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>1688 页面结构探测</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 900px; margin: 32px auto; padding: 0 20px; line-height:1.7; color:#1f2937; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin-top: 24px; }
+  .bookmarklet { display:inline-block; background:#059669; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; }
+  .box { background:#f8fafc; border:1px solid #e3e5e8; border-radius:8px; padding:14px 18px; margin:14px 0; }
+  textarea { width:100%; padding:10px; border:1px solid #e3e5e8; border-radius:6px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  code { background:#eef2ff; padding:1px 6px; border-radius:4px; }
+  .muted { color:#6b7280; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>🔍 1688 页面结构探测</h1>
+<p class="muted">这个工具用来了解你看到的 1688 页面结构，以便我写出精准的抓取脚本。<strong>不会上传任何数据，只在你本机运行。</strong></p>
+
+<div class="box">
+  <h2>第 1 步：把这个绿色按钮拖到书签栏</h2>
+  <a id="probe-bm" class="bookmarklet" href="#" onclick="return false;">🔍 探测1688结构</a>
+  <p class="muted">拖不动就右键复制链接地址，新建书签粘贴。</p>
+</div>
+
+<div class="box">
+  <h2>第 2 步：在 1688 页面点这个书签</h2>
+  <p class="muted">无论搜索列表页还是商品详情页都可以，两种页面各点一次效果最好。</p>
+</div>
+
+<div class="box">
+  <h2>第 3 步：把弹出来的结构信息复制给我</h2>
+  <p class="muted">点书签后会弹出一个框，全选复制（Ctrl+A, Ctrl+C），粘贴到聊天里发给我。</p>
+  <textarea id="output" rows="12" placeholder="点击上方书签后，这里会显示探测结果……"></textarea>
+</div>
+
+<script>
+// 探测脚本：收集页面的关键结构信息
+const probeCode = `(function(){
+var info = {};
+info.pageType = location.hostname === 'detail.1688.com' ? 'detail' : (location.hostname.indexOf('s.1688.com')>=0 ? 'search' : 'other');
+info.url = location.href;
+info.title = document.title;
+
+// 1. 找所有可能的商品卡片容器（通过包含链接+图片的重复结构）
+var cards = [];
+var candidates = document.querySelectorAll('[class*="card"],[class*="item"],[class*="offer"],[class*="product"]');
+for (var i=0;i<candidates.length && cards.length<5;i++){
+  var el = candidates[i];
+  var imgs = el.querySelectorAll('img');
+  var links = el.querySelectorAll('a[href*="offer"]');
+  if (imgs.length>0 && links.length>0){
+    cards.push({
+      cls: el.className.toString().slice(0,120),
+      tag: el.tagName,
+      imgCount: imgs.length,
+      linkCount: links.length,
+      firstImgSrc: (imgs[0].src||'').slice(0,150),
+      firstLink: (links[0].href||'').slice(0,150),
+      textSample: el.innerText.slice(0,200)
+    });
+    if (cards.length>=3) break;
+  }
+}
+info.candidateCards = cards;
+
+// 2. 检测是否有 offer 链接
+var offerLinks = document.querySelectorAll('a[href*="offer"]');
+info.offerLinkCount = offerLinks.length;
+info.offerLinkSamples = [];
+for (var j=0;j<offerLinks.length && j<3;j++) info.offerLinkSamples.push(offerLinks[j].href.slice(0,160));
+
+// 3. 店铺相关元素
+var shopEls = document.querySelectorAll('[class*="shop"],[class*="company"],[class*="seller"]');
+info.shopElements = [];
+for (var k=0;k<shopEls.length && k<5;k++) info.shopElements.push({cls: shopEls[k].className.toString().slice(0,100), text: shopEls[k].innerText.slice(0,100)});
+
+// 4. 价格相关元素
+var priceEls = document.querySelectorAll('[class*="price"],[class*="Price"]');
+info.priceElements = [];
+for (var m=0;m<priceEls.length && m<5;m++) info.priceElements.push({cls: priceEls[m].className.toString().slice(0,100), text: priceEls[m].innerText.slice(0,60)});
+
+// 5. 图片元素统计
+var allImgs = document.querySelectorAll('img');
+info.imgCount = allImgs.length;
+info.bigImgs = [];
+for (var n=0;n<allImgs.length;n++){
+  if ((allImgs[n].naturalWidth||0) > 200 && info.bigImgs.length<5){
+    info.bigImgs.push({w:allImgs[n].naturalWidth, h:allImgs[n].naturalHeight, src:(allImgs[n].src||'').slice(0,150)});
+  }
+}
+
+var text = JSON.stringify(info, null, 2);
+// 尝试复制到剪贴板
+try {
+  navigator.clipboard.writeText(text).then(function(){
+    prompt('✅ 已复制到剪贴板，直接粘贴给我\\n\\n同时显示如下：', text);
+  }).catch(function(){
+    prompt('请复制以下内容发给我：', text);
+  });
+} catch(e) {
+  prompt('请复制以下内容发给我：', text);
+}
+})();`;
+
+const oneLine = 'javascript:' + encodeURIComponent(probeCode);
+document.getElementById('probe-bm').href = oneLine;
+document.getElementById('output').value = oneLine;
+</script>
+</body>
+</html>

@@ -28,6 +28,11 @@
   table { width:100%; border-collapse:collapse; font-size:13px; }
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
   th { color:var(--muted); font-weight:600; }
+  .cmp-best td { background:#f0fdf4; }
+  .cmp-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; white-space:nowrap; }
+  .cmp-badge.ok { background:#dcfce7; color:#166534; }
+  .cmp-badge.warn { background:#fef9c3; color:#854d0e; }
+  .cmp-cond { font-size:12px; line-height:1.8; color:#374151; }
   .list { display:flex; flex-wrap:wrap; gap:8px; }
   .chip { background:#eef2ff; color:#3730a3; border-radius:14px; padding:4px 12px; font-size:13px; cursor:pointer; }
   .chip.active { background:var(--accent); color:#fff; }
@@ -534,10 +539,12 @@ async function exportComparison() {
   const rows = r.rows || [];
   if (!rows.length) return alert('暂无可导出的比价数据');
 
-  const headers = ['店铺', '商品', '价格', '来源', 'MOQ', '含税', '匹配状态', '条件', '链接'];
+  const headers = ['店铺', '商品', '价格', '来源', '页面标价', 'MOQ', '含税', '运费', '阶梯价',
+                   '匹配状态', '可比', '条件备注', '链接'];
   const tierMap = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
   const srcMap = {listed:'标价', quoted:'报价'};
-  const taxMap = {included:'含税', excluded:'不含税', unknown:'-'};
+  const taxMap = {included:'含税', excluded:'不含税', unknown:'未知'};
+  const fmtTiers = t => (t || []).map(x => `${x.qty}件及以上${x.price}元`).join('；');
 
   const esc = v => {
     const s = (v === null || v === undefined) ? '' : String(v);
@@ -548,7 +555,9 @@ async function exportComparison() {
   for (const x of rows) {
     lines.push([
       esc(x.shop_name), esc(x.title), esc(x.price), esc(srcMap[x.price_source] || x.price_source),
-      esc(x.moq), esc(taxMap[x.tax] || x.tax), esc(tierMap[x.tier] || x.tier),
+      esc(x.listed_price ?? ''), esc(x.moq ?? ''), esc(taxMap[x.tax] || x.tax || '未知'),
+      esc(x.includes_shipping === true ? '包邮' : x.includes_shipping === false ? '不包邮' : '未知'),
+      esc(fmtTiers(x.tiers)), esc(tierMap[x.tier] || x.tier), esc(x.comparable ? '是' : '否'),
       esc(x.condition_note), esc(x.url),
     ].join(','));
   }
@@ -573,31 +582,53 @@ async function exportComparison() {
 }
 const TIER_CN = {exact:'✅ 完全同款', equivalent:'⚠️ 等效替代', unverified:'· 未核验', rejected:'· 已排除'};
 const SRC_CN = {listed:'标价', quoted:'报价'};
+const TAX_CN = {included:'含税', excluded:'不含税', unknown:'含税未知'};
+
+// 成交条件六维中的四维（价格/匹配层级在专属列）：MOQ / 含税 / 运费 / 阶梯价
+function fmtConditions(x) {
+  const parts = [`MOQ ${x.moq ?? '未知'}`];
+  parts.push(TAX_CN[x.tax] || x.tax || '含税未知');
+  parts.push(x.includes_shipping === true ? '包邮'
+    : x.includes_shipping === false ? '不包邮' : '运费未知');
+  if (x.tiers && x.tiers.length) {
+    parts.push('阶梯价 ' + x.tiers.map(t => `${t.qty}件↑${Number(t.price).toFixed(2)}元`).join('，'));
+  }
+  return parts.join('<br>');
+}
 
 async function runComparison() {
   if (!currentTargetId) return alert('先选择目标款');
   const r = await api(`/api/targets/${currentTargetId}/comparison`, {method:'POST'});
   let html = `<h3>综述</h3><p>${r.summary||''}</p>`;
   if (r.rows && r.rows.length) {
-    html += `<table><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>MOQ</th><th>含税</th><th>匹配</th><th>条件</th></tr>`;
+    html += `<table><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>匹配</th>`
+          + `<th>可比性</th><th>成交条件</th><th>备注</th></tr>`;
+    let bestMarked = false;
     html += r.rows.map(x => {
       const price = (x.price === null || x.price === undefined) ? '-' : Number(x.price).toFixed(2);
       const listed = (x.listed_price !== null && x.listed_price !== undefined && x.price_source === 'quoted')
         ? `<br><span class="muted" style="font-size:11px">标价 ${Number(x.listed_price).toFixed(2)}</span>` : '';
       const title = (x.title||'').length > 22 ? x.title.slice(0,22)+'…' : (x.title||'');
-      const taxTxt = x.tax === 'included' ? '含税' : x.tax === 'excluded' ? '不含税' : '-';
-      return `<tr>
-        <td>${x.shop_name||''}</td>
-        <td title="${x.title||''}">${title}</td>
-        <td><b>${price}</b>${listed}</td>
+      // 行已按「可比优先、价格升序」排好，第一个可硬比价行即当前最低同款
+      let rowCls = '';
+      if (x.comparable && !bestMarked) { rowCls = ' class="cmp-best"'; bestMarked = true; }
+      const compBadge = x.comparable
+        ? '<span class="cmp-badge ok">✅ 可硬比价</span>'
+        : '<span class="cmp-badge warn">⚠️ 仅参考</span>';
+      return `<tr${rowCls}>
+        <td>${escapeHtml(x.shop_name)||''}</td>
+        <td title="${escapeAttr(x.title)}">${escapeHtml(title)}</td>
+        <td><b>¥${price}</b>${listed}</td>
         <td>${SRC_CN[x.price_source]||x.price_source||'-'}</td>
-        <td>${x.moq ?? '-'}</td>
-        <td>${taxTxt}</td>
         <td>${TIER_CN[x.tier]||x.tier||'-'}</td>
-        <td>${x.condition_note||''}</td>
+        <td>${compBadge}</td>
+        <td class="cmp-cond">${fmtConditions(x)}</td>
+        <td class="muted">${escapeHtml(x.condition_note)}</td>
       </tr>`;
     }).join('');
     html += '</table>';
+    html += `<p class="muted" style="font-size:12px;margin-top:8px">可比性六维：<b>价格 · MOQ · 含税 · 运费 · 阶梯价 · 匹配层级</b>。`
+          + `仅「完全同款」行可硬比价（绿色底 = 当前最低同款）；等效替代 / 未核验 / 已排除仅供参考，不进入比价结论。</p>`;
   }
   html += `<h3>建议</h3><p>${r.recommendation||''}</p>`;
   if (r.negotiation_script) html += `<h3>议价话术</h3><pre>${r.negotiation_script}</pre>`;

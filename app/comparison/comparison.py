@@ -42,6 +42,7 @@ def _product_row(p: Product, shop: Optional[Shop]) -> dict:
         "moq": p.moq,
         "tax": "unknown",
         "includes_shipping": None,
+        "tiers": [],                   # 标价无阶梯价信息
         "condition_note": "页面标价",
         "tier": tier,
         "comparable": tier == MatchTier.EXACT.value and p.listed_price is not None,
@@ -65,6 +66,7 @@ def _quote_row(q: Quote, p: Optional[Product], shop: Optional[Shop]) -> dict:
         "moq": q.moq,
         "tax": q.tax.value,
         "includes_shipping": q.includes_shipping,
+        "tiers": q.tiers,              # 阶梯价 [{qty, price}]
         "condition_note": q.condition_note,
         "tier": tier,
         "comparable": tier == MatchTier.EXACT.value,

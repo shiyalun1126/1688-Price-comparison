@@ -68,6 +68,8 @@ def _quote_row(q: Quote, p: Optional[Product], shop: Optional[Shop]) -> dict:
         "moq": q.moq,
         "tax": q.tax.value,
         "includes_shipping": q.includes_shipping,
+        "stock_status": q.stock_status.value,    # in_stock/pre_sale/custom/unknown
+        "lead_time_hours": q.lead_time_hours,    # 发货时效（小时）
         "tiers": q.tiers,              # 阶梯价 [{qty, price}]
         "condition_note": q.condition_note,
         "tier": tier,
@@ -226,6 +228,7 @@ def _fingerprint(
         "quotes": sorted(
             (
                 q.id, q.price, q.moq, q.tax.value, q.includes_shipping,
+                q.stock_status.value, q.lead_time_hours,
                 json.dumps(q.tiers, ensure_ascii=False, sort_keys=True),
                 q.condition_note, q.quoted_at.isoformat(),
             )

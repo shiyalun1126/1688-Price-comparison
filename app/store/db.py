@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS quote (
     tiers TEXT NOT NULL DEFAULT '[]',
     condition_note TEXT NOT NULL DEFAULT '',
     raw_text TEXT NOT NULL DEFAULT '',
+    stock_status TEXT NOT NULL DEFAULT 'unknown',
+    lead_time_hours INTEGER,
     quoted_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS comparison (
@@ -149,6 +151,11 @@ class Store:
         ccols = {r["name"] for r in self._conn.execute("PRAGMA table_info(comparison)")}
         if "fingerprint" not in ccols:
             self._conn.execute("ALTER TABLE comparison ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
+        qcols = {r["name"] for r in self._conn.execute("PRAGMA table_info(quote)")}
+        if "stock_status" not in qcols:
+            self._conn.execute("ALTER TABLE quote ADD COLUMN stock_status TEXT NOT NULL DEFAULT 'unknown'")
+        if "lead_time_hours" not in qcols:
+            self._conn.execute("ALTER TABLE quote ADD COLUMN lead_time_hours INTEGER")
 
     def close(self) -> None:
         self._conn.close()
@@ -334,13 +341,15 @@ class Store:
         self._conn.execute(
             """INSERT OR REPLACE INTO quote
                (id, target_style_id, product_id, shop_id, inquiry_id, source, price,
-                moq, tax, includes_shipping, tiers, condition_note, raw_text, quoted_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                moq, tax, includes_shipping, tiers, condition_note, raw_text,
+                stock_status, lead_time_hours, quoted_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 q.id, q.target_style_id, q.product_id, q.shop_id, q.inquiry_id,
                 q.source.value, q.price, q.moq, q.tax.value,
                 q.includes_shipping, json.dumps(q.tiers), q.condition_note,
-                q.raw_text, _iso(q.quoted_at),
+                q.raw_text, q.stock_status.value, q.lead_time_hours,
+                _iso(q.quoted_at),
             ),
         )
         self._conn.commit()
@@ -355,7 +364,7 @@ class Store:
     @staticmethod
     def _row_to_quote(row) -> Quote:
         from datetime import datetime
-        from app.models.enums import QuoteSource, TaxStatus
+        from app.models.enums import QuoteSource, StockStatus, TaxStatus
         return Quote(
             id=row["id"], target_style_id=row["target_style_id"],
             product_id=row["product_id"], shop_id=row["shop_id"],
@@ -363,7 +372,12 @@ class Store:
             price=row["price"], moq=row["moq"], tax=TaxStatus(row["tax"]),
             includes_shipping=row["includes_shipping"],
             tiers=_loads(row["tiers"], []), condition_note=row["condition_note"],
-            raw_text=row["raw_text"], quoted_at=datetime.fromisoformat(row["quoted_at"]),
+            raw_text=row["raw_text"],
+            stock_status=(StockStatus(row["stock_status"])
+                          if row["stock_status"] in StockStatus._value2member_map_
+                          else StockStatus.UNKNOWN),
+            lead_time_hours=row["lead_time_hours"],
+            quoted_at=datetime.fromisoformat(row["quoted_at"]),
         )
 
     # ---- comparison -------------------------------------------------------

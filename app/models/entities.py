@@ -11,6 +11,7 @@ from app.models.enums import (
     MatchStatus,
     MatchTier,
     QuoteSource,
+    StockStatus,
     TaxStatus,
 )
 
@@ -103,6 +104,8 @@ class Quote(BaseModel):
     moq: Optional[int] = None          # 起订量
     tax: TaxStatus = TaxStatus.UNKNOWN
     includes_shipping: Optional[bool] = None
+    stock_status: StockStatus = StockStatus.UNKNOWN  # 现货/预售/定制
+    lead_time_hours: Optional[int] = None            # 发货时效（小时，如 48h）
     tiers: list[dict] = Field(default_factory=list)  # 阶梯价 [{qty, price}]
     condition_note: str = ""           # 条件备注（口语化原文）
     raw_text: str = ""                 # 卖家回复原文（溯源）

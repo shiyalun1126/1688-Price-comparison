@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.llm.client import LLMClient
 from app.models.entities import Product, Quote, TargetStyle
-from app.models.enums import QuoteSource, TaxStatus
+from app.models.enums import QuoteSource, StockStatus, TaxStatus
 
 
 def build_inquiry_script(
@@ -50,8 +50,11 @@ def build_inquiry_script(
 
 
 def _parse_rules(reply: str) -> dict:
-    """规则兜底：正则抽取价格/起订量/含税。"""
-    result: dict = {"price": None, "moq": None, "tax": TaxStatus.UNKNOWN, "tiers": []}
+    """规则兜底：正则抽取价格/起订量/含税/现货/发货时效。"""
+    result: dict = {
+        "price": None, "moq": None, "tax": TaxStatus.UNKNOWN, "tiers": [],
+        "stock_status": StockStatus.UNKNOWN, "lead_time_hours": None,
+    }
     # 价格：形如「5.5 元」「5元」「¥5」「5.5/件」
     m = re.search(r"[¥￥]\s*(\d+(?:\.\d+)?)", reply)
     if not m:
@@ -66,6 +69,20 @@ def _parse_rules(reply: str) -> dict:
     mq = re.search(r"(?:起订|起批量|最小|MOQ)[^\d]*(\d+)", reply, re.IGNORECASE)
     if mq:
         result["moq"] = int(mq.group(1))
+    # 现货状态：注意先判「现货」，再判预售/定制
+    if "现货" in reply:
+        result["stock_status"] = StockStatus.IN_STOCK
+    elif "预售" in reply or "期货" in reply:
+        result["stock_status"] = StockStatus.PRE_SALE
+    elif "定制" in reply or "订制" in reply or "按单生产" in reply:
+        result["stock_status"] = StockStatus.CUSTOM
+    # 发货时效：「48小时内发货」「3天发货」「发货时间72小时」
+    lt = re.search(r"(\d+)\s*(?:个)?\s*(小时|天)[以之内前后]*\s*(?:发货|发出|寄出)", reply)
+    if not lt:
+        lt = re.search(r"(?:发货|发出|寄出)[^\d]{0,6}(\d+)\s*(?:个)?\s*(小时|天)", reply)
+    if lt:
+        n = int(lt.group(1))
+        result["lead_time_hours"] = n * 24 if lt.group(2) == "天" else n
     return result
 
 
@@ -89,7 +106,10 @@ def parse_quote(
                 {"role": "system", "content": (
                     "从卖家回复中抽取报价，输出 JSON，字段：price(数字,单位元)、"
                     "moq(整数,可为null)、tax(字符串: included/excluded/unknown)、"
-                    "includes_shipping(布尔,可为null)、condition_note(条件备注原文)、"
+                    "includes_shipping(布尔,可为null)、"
+                    "stock_status(字符串: in_stock=现货/pre_sale=预售或期货/custom=定制/unknown=未提及)、"
+                    "lead_time_hours(发货时效,整数小时数,如「48小时内发货」=48、「3天发货」=72,未提及为null)、"
+                    "condition_note(条件备注原文)、"
                     "tiers(阶梯价数组[{qty,price}],可为空)。"
                     "只输出 JSON，不要解释。"
                 )},
@@ -103,6 +123,11 @@ def parse_quote(
             tax = data.get("tax", "unknown")
             q.tax = TaxStatus(tax) if tax in TaxStatus._value2member_map_ else TaxStatus.UNKNOWN
             q.includes_shipping = data.get("includes_shipping")
+            stock = data.get("stock_status", "unknown")
+            q.stock_status = (StockStatus(stock)
+                              if stock in StockStatus._value2member_map_ else StockStatus.UNKNOWN)
+            if data.get("lead_time_hours") is not None:
+                q.lead_time_hours = int(data["lead_time_hours"])
             q.tiers = data.get("tiers", [])
             q.condition_note = data.get("condition_note", "")
             return q
@@ -114,5 +139,7 @@ def parse_quote(
         q.price = r["price"]
     q.moq = r["moq"]
     q.tax = r["tax"]
+    q.stock_status = r["stock_status"]
+    q.lead_time_hours = r["lead_time_hours"]
     q.condition_note = reply
     return q

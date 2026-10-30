@@ -13,6 +13,7 @@ from app.models.enums import (
     MatchStatus,
     MatchTier,
     QuoteSource,
+    StockStatus,
     TaxStatus,
 )
 
@@ -115,6 +116,32 @@ class TestParseRules:
     def test_no_price(self):
         r = _parse_rules("私聊详谈")
         assert r["price"] is None
+
+    # ---- 履约字段：现货 / 发货时效 ----
+    def test_stock_in_stock_and_lead_hours(self):
+        r = _parse_rules("有现货，48小时内发货，45元一件。")
+        assert r["stock_status"] == StockStatus.IN_STOCK
+        assert r["lead_time_hours"] == 48
+
+    def test_lead_time_days_converted_to_hours(self):
+        r = _parse_rules("3天内发货，都是现货。")
+        assert r["stock_status"] == StockStatus.IN_STOCK
+        assert r["lead_time_hours"] == 72
+
+    def test_pre_sale_and_lead_before_ship_word(self):
+        r = _parse_rules("预售款，发货要7天。")
+        assert r["stock_status"] == StockStatus.PRE_SALE
+        assert r["lead_time_hours"] == 168
+
+    def test_custom(self):
+        r = _parse_rules("这个是定制款，按单生产，5天发货。")
+        assert r["stock_status"] == StockStatus.CUSTOM
+        assert r["lead_time_hours"] == 120
+
+    def test_no_fulfillment_info(self):
+        r = _parse_rules("42元一件，起订50。")
+        assert r["stock_status"] == StockStatus.UNKNOWN
+        assert r["lead_time_hours"] is None
 
 
 # ---- 视觉提示词：品类自适应 ----

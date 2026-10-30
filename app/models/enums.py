@@ -46,3 +46,12 @@ class TaxStatus(str, Enum):
     INCLUDED = "included"
     EXCLUDED = "excluded"
     UNKNOWN = "unknown"
+
+
+class StockStatus(str, Enum):
+    """现货状态（卖家履约能力）。"""
+
+    IN_STOCK = "in_stock"      # 现货
+    PRE_SALE = "pre_sale"      # 预售/期货
+    CUSTOM = "custom"          # 定制（按单生产）
+    UNKNOWN = "unknown"

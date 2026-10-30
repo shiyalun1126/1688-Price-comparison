@@ -3,330 +3,897 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>1688 比价智能体</title>
+<title>问渠 · 1688 比价智能体</title>
 <style>
-  :root { --bg:#f5f6f8; --card:#fff; --border:#e3e5e8; --accent:#2563eb; --muted:#6b7280; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background:var(--bg); color:#1f2937; }
-  header { background:var(--accent); color:#fff; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; }
-  header h1 { margin:0; font-size:18px; font-weight:600; }
-  .nav-tabs { display:flex; gap:0; background:#1d4ed8; }
-  .nav-tab { padding:12px 20px; color:rgba(255,255,255,.8); cursor:pointer; font-size:14px; border:none; background:none; transition:.2s; }
-  .nav-tab:hover { background:rgba(255,255,255,.1); color:#fff; }
-  .nav-tab.active { background:rgba(255,255,255,.15); color:#fff; font-weight:600; }
-  main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-  .tab-content { display:none; }
-  .tab-content.active { display:block; }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
-  .card h2 { margin:0 0 14px; font-size:15px; }
-  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
-  input, textarea, select { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
-  button { background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; cursor:pointer; }
-  button:hover { opacity:.9; }
-  button.small { padding:4px 10px; font-size:12px; }
-  button.ghost { background:#eef2ff; color:#3730a3; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
-  th { color:var(--muted); font-weight:600; }
-  .cmp-best td { background:#f0fdf4; }
-  .cmp-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; white-space:nowrap; }
-  .cmp-badge.ok { background:#dcfce7; color:#166534; }
-  .cmp-badge.warn { background:#fef9c3; color:#854d0e; }
-  .cmp-cond { font-size:12px; line-height:1.8; color:#374151; }
-  .list { display:flex; flex-wrap:wrap; gap:8px; }
-  .chip { background:#eef2ff; color:#3730a3; border-radius:14px; padding:4px 12px; font-size:13px; cursor:pointer; }
-  .chip.active { background:var(--accent); color:#fff; }
-  .chip-del { display:inline-block; margin-left:6px; padding:0 5px; border-radius:8px; font-size:14px; line-height:1.2; opacity:.55; cursor:pointer; }
-  .chip-del:hover { opacity:1; background:rgba(220,38,38,.85); color:#fff; }
-  .muted { color:var(--muted); font-size:13px; }
-  pre { background:#f9fafb; border:1px solid var(--border); border-radius:6px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
-  .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:10px; }
-  .tag.exact { background:#dcfce7; color:#166534; }
-  .tag.equiv { background:#fef3c7; color:#92400e; }
-  .tag.other { background:#e5e7eb; color:#374151; }
-  .status { display:inline-block; font-size:12px; padding:2px 10px; border-radius:10px; }
-  .status.pending { background:#e5e7eb; color:#374151; }
-  .status.draft { background:#dbeafe; color:#1e40af; }
-  .status.sent { background:#e0e7ff; color:#3730a3; }
-  .status.replied { background:#fef3c7; color:#92400e; }
-  .status.quoted { background:#dcfce7; color:#166534; }
-  .status.closed { background:#f3f4f6; color:#6b7280; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .thumb { width:64px; height:64px; object-fit:cover; border:1px solid var(--border); border-radius:4px; }
-  .match-col { margin-bottom:12px; }
-  .match-col h3 { font-size:14px; margin:0 0 8px; }
-  .match-card { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px; background:#fafafa; }
-  .match-card img { width:64px; height:64px; object-fit:cover; border-radius:4px; }
-  .match-card .info { flex:1; }
-  .match-card .shop { font-weight:600; font-size:13px; }
-  .match-card .reason { color:var(--muted); font-size:12px; margin-top:4px; }
-  .demo-btn { background:#059669; margin-left:12px; }
-  /* 智能体推理轨迹 */
-  .trace-step { border-left:3px solid var(--accent); background:#f8fafc; border-radius:0 8px 8px 0; padding:10px 14px; margin-bottom:10px; }
-  .trace-step .rnd { font-size:11px; color:var(--accent); font-weight:700; }
-  .trace-thought { color:#334155; margin:6px 0; font-size:13px; line-height:1.6; }
-  .trace-tool { display:inline-block; background:#eef2ff; color:#3730a3; border-radius:6px; padding:3px 10px; font-size:12px; font-family:ui-monospace,monospace; margin:4px 0; }
-  .trace-obs { background:#fff; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:11px; font-family:ui-monospace,monospace; color:#475569; max-height:150px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin-top:6px; }
-  .agent-final { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:14px 18px; margin-top:12px; line-height:1.7; }
-  .tutorial-box { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:16px 20px; margin-bottom:20px; }
-  .tutorial-box h3 { margin:0 0 12px; font-size:16px; }
-  .tutorial-steps { margin:0; padding-left:20px; line-height:1.8; }
-  .bookmarklet-link { display:inline-block; background:#2563eb; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; margin-top:12px; }
+/* ============ 设计令牌：暖纸 / 暖墨 / 赭金 ============ */
+:root {
+  --paper:        oklch(97.8% 0.009 85);
+  --surface:      oklch(99.3% 0.005 85);
+  --surface-2:    oklch(96.3% 0.012 85);
+  --ink:          oklch(26% 0.018 60);
+  --ink-2:        oklch(42% 0.016 65);
+  --muted:        oklch(50% 0.014 70);
+  --faint:        oklch(64% 0.012 75);
+  --border:       oklch(90.5% 0.013 80);
+  --border-strong:oklch(84% 0.016 78);
+
+  --accent:       oklch(56% 0.17 42);
+  --accent-deep:  oklch(48% 0.15 40);
+  --accent-soft:  oklch(94.5% 0.04 72);
+
+  --gold-deep:    oklch(50% 0.11 75);
+  --gold-soft:    oklch(94% 0.05 85);
+  --ochre-deep:   oklch(50% 0.10 62);
+  --ochre-soft:   oklch(94% 0.045 80);
+  --leaf-deep:    oklch(46% 0.10 152);
+  --leaf-soft:    oklch(93.5% 0.05 152);
+  --danger:       oklch(50% 0.19 25);
+  --danger-soft:  oklch(94% 0.05 25);
+
+  --console-bg:     oklch(23% 0.014 60);
+  --console-surface:oklch(27.5% 0.015 60);
+  --console-border: oklch(33% 0.014 60);
+  --console-ink:    oklch(92% 0.01 80);
+  --console-muted:  oklch(70% 0.012 75);
+  --console-accent: oklch(76% 0.14 58);
+
+  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
+  --font-mono:  "IBM Plex Mono", "SF Mono", ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+
+  --r-s: 6px; --r-m: 10px; --r-l: 14px;
+  --shadow: 0 1px 2px oklch(26% 0.018 60 / .05), 0 4px 16px oklch(26% 0.018 60 / .06);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.6;
+  background: var(--paper); color: var(--ink);
+}
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ============ 侧栏 ============ */
+.sidebar {
+  position: fixed; inset: 0 auto 0 0; width: 232px; z-index: 40;
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 20px 14px 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; border-bottom: 1px solid var(--border); }
+.brand-mark {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--accent-deep);
+  color: oklch(98% 0.01 85); font-family: var(--font-serif); font-weight: 700; font-size: 16px;
+  display: grid; place-items: center; flex: none;
+}
+.brand-name { font-size: 15px; font-weight: 700; letter-spacing: .01em; line-height: 1.2; }
+.brand-sub { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; }
+.nav-tab {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 8px; background: none;
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink-2);
+  cursor: pointer; text-align: left; transition: background .15s ease-out, color .15s ease-out;
+}
+.nav-tab svg { flex: none; opacity: .75; }
+.nav-tab:hover { background: var(--surface-2); color: var(--ink); }
+.nav-tab.active { background: var(--accent-soft); color: var(--accent-deep); font-weight: 600; }
+.nav-tab.active svg { opacity: 1; }
+
+.side-stats { margin-top: 22px; padding: 0 8px; display: grid; gap: 12px; }
+.side-stat { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.side-stat:last-child { border-bottom: 0; padding-bottom: 0; }
+.side-stat .k { font-size: 12px; color: var(--muted); }
+.side-stat .v { font-family: var(--font-mono); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.side-foot { margin-top: auto; display: grid; gap: 10px; }
+.side-status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); padding: 0 4px; }
+.side-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--leaf-deep); flex: none; }
+
+/* ============ 主区骨架 ============ */
+.main { margin-left: 232px; min-height: 100vh; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 16px;
+  height: 58px; padding: 0 28px;
+  background: var(--paper); border-bottom: 1px solid var(--border);
+}
+.page-title { font-family: var(--font-serif); font-size: 17px; font-weight: 700; line-height: 1.2; }
+.page-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+/* 目标款切换器 */
+.switcher { position: relative; }
+.switcher-btn {
+  display: flex; align-items: center; gap: 9px; max-width: 300px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-m);
+  padding: 6px 10px; cursor: pointer; font-family: var(--font-sans);
+  transition: border-color .15s ease-out;
+}
+.switcher-btn:hover { border-color: var(--accent); }
+.switcher-thumb { width: 26px; height: 26px; border-radius: var(--r-s); overflow: hidden; background: var(--surface-2); flex: none; display: grid; place-items: center; }
+.switcher-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.switcher-thumb i { width: 8px; height: 8px; border-radius: 2px; background: var(--border-strong); }
+.switcher-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.switcher-caret { color: var(--muted); flex: none; }
+.switcher-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; width: 320px; max-height: 380px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-l);
+  box-shadow: var(--shadow); padding: 6px; display: none; z-index: 50;
+}
+.switcher-pop.open { display: block; }
+.ts-option {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font-family: var(--font-sans); text-align: left;
+}
+.ts-option:hover { background: var(--surface-2); }
+.ts-option.on { background: var(--accent-soft); }
+.ts-thumb { width: 34px; height: 34px; border-radius: var(--r-s); overflow: hidden; background: var(--surface-2); flex: none; display: grid; place-items: center; }
+.ts-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ts-thumb i { width: 9px; height: 9px; border-radius: 2px; background: var(--border-strong); }
+.ts-name { font-size: 13px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-meta { font-size: 11px; color: var(--muted); flex: none; }
+.ts-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--muted); }
+.ts-new { width: 100%; margin-top: 4px; }
+
+/* ============ 流程步骤条 ============ */
+.pipeline {
+  display: flex; gap: 4px; margin: 20px 28px 0; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-l);
+}
+.pipeline.is-hidden { display: none; }
+.pipe-step {
+  flex: 1; display: flex; align-items: center; gap: 9px; min-width: 0;
+  padding: 8px 10px; border: 0; border-radius: var(--r-m); background: none;
+  cursor: pointer; font-family: var(--font-sans); text-align: left;
+  transition: background .15s ease-out;
+}
+.pipe-step:hover { background: var(--surface-2); }
+.pipe-num {
+  width: 22px; height: 22px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  border: 1.5px solid var(--border-strong); color: var(--faint);
+}
+.pipe-step.done .pipe-num { background: var(--accent-deep); border-color: var(--accent-deep); color: oklch(98% 0.01 85); }
+.pipe-step.active .pipe-num { border-color: var(--accent-deep); color: var(--accent-deep); background: var(--accent-soft); }
+.pipe-label { font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.pipe-step.done .pipe-label, .pipe-step.active .pipe-label { color: var(--ink); }
+.pipe-count { font-family: var(--font-mono); font-size: 11px; color: var(--muted); background: var(--surface-2); border-radius: var(--r-s); padding: 0 6px; font-variant-numeric: tabular-nums; }
+.pipe-step.done .pipe-count { background: var(--accent-soft); color: var(--accent-deep); }
+
+/* ============ 内容区 ============ */
+.content { padding: 24px 28px 56px; flex: 1; }
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fade-in .18s ease-out; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.workbench-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+.work-col { display: grid; gap: 20px; min-width: 0; }
+
+/* 工作分区 */
+.zone { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-l); padding: 18px 20px; }
+.zone-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.zone-title { display: flex; align-items: baseline; gap: 9px; font-size: 14px; font-weight: 700; }
+.zone-index { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--r-s); padding: 1px 7px; }
+.zone-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.zone-hint { margin: 6px 0 14px; font-size: 12px; color: var(--muted); }
+
+/* 目标款 */
+.target-current { display: flex; align-items: center; gap: 16px; padding: 14px; background: var(--surface-2); border-radius: var(--r-m); }
+.target-preview { flex: none; }
+.target-preview .thumb { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); display: block; }
+.target-info { flex: 1; min-width: 0; }
+.target-name { font-family: var(--font-serif); font-size: 17px; font-weight: 700; line-height: 1.3; }
+.target-meta { font-size: 12px; color: var(--muted); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.target-actions { display: flex; gap: 8px; flex: none; }
+
+.nt-form { margin-top: 14px; border-top: 1px dashed var(--border-strong); padding-top: 16px; }
+.nt-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.nt-grid .span2 { grid-column: span 2; }
+.nt-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* 表单 */
+.field label, .row-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--muted); margin-bottom: 5px; }
+input, textarea, select {
+  width: 100%; padding: 8px 10px; font-family: var(--font-sans); font-size: 13px;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px;
+  transition: border-color .15s ease-out, box-shadow .15s ease-out;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+input[type="file"] { padding: 6px 8px; font-size: 12px; background: var(--surface-2); }
+input[type="file"]::file-selector-button {
+  font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--accent-deep);
+  background: var(--accent-soft); border: 0; border-radius: 6px; padding: 5px 10px; margin-right: 8px; cursor: pointer;
+}
+textarea { resize: vertical; }
+
+.sub-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); }
+.sub-row:first-of-type { border-top: 0; }
+.sub-row .row-label { padding-bottom: 8px; flex: none; width: 34px; }
+.sub-row .grow { flex: 1; min-width: 130px; }
+.sub-row .w-90 { width: 96px; flex: none; }
+.sub-row .w-180 { width: 190px; flex: none; }
+.sub-row select { width: auto; min-width: 150px; flex: none; }
+
+/* 按钮 */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600; line-height: 1.2;
+  padding: 8px 14px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+  transition: background .15s ease-out, border-color .15s ease-out, color .15s ease-out, opacity .15s ease-out;
+  white-space: nowrap;
+}
+.btn.sm { padding: 5px 10px; font-size: 12px; }
+.btn.primary { background: var(--accent-deep); color: oklch(98% 0.01 85); }
+.btn.primary:hover { background: color-mix(in oklch, var(--accent-deep) 88%, black); }
+.btn.default { background: var(--surface); border-color: var(--border-strong); color: var(--ink); }
+.btn.default:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn.ghost { background: var(--accent-soft); color: var(--accent-deep); }
+.btn.ghost:hover { background: color-mix(in oklch, var(--accent-soft) 80%, var(--accent)); }
+.btn.danger-text { background: none; color: var(--danger); padding-left: 8px; padding-right: 8px; }
+.btn.danger-text:hover { background: var(--danger-soft); }
+.btn:disabled { opacity: .45; cursor: default; pointer-events: none; }
+
+/* 进度 */
+#progress { margin-top: 14px; }
+.progress-track { background: var(--surface-2); border-radius: 99px; height: 6px; overflow: hidden; }
+#progress-bar { background: var(--accent); height: 100%; width: 0%; transition: width .3s ease-out; border-radius: 99px; }
+#progress-text { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* 空状态 */
+.empty {
+  border: 1.5px dashed var(--border-strong); border-radius: var(--r-m);
+  padding: 28px 20px; text-align: center; font-size: 13px; color: var(--muted); line-height: 1.8;
+}
+
+/* 表格（匹配结果 / 比价 / 询价共用） */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--surface-2); }
+td { font-variant-numeric: tabular-nums; }
+
+/* 匹配结果分组 */
+.match-col { margin-top: 16px; }
+.match-col:first-child { margin-top: 4px; }
+.match-col h3 { font-size: 13px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.match-col h3 .n { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.match-card { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--border); border-radius: var(--r-m); padding: 10px 12px; margin-bottom: 8px; background: var(--surface); transition: border-color .15s ease-out; }
+.match-card:hover { border-color: var(--border-strong); }
+.match-card img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: none; border: 1px solid var(--border); }
+.match-card .info { flex: 1; min-width: 0; }
+.match-card .shop { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.match-card .shop .price { font-family: var(--font-mono); color: var(--accent-deep); font-weight: 700; }
+.match-card .reason { color: var(--muted); font-size: 12px; margin-top: 5px; line-height: 1.7; }
+
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--r-s); flex: none; }
+.tag.exact { background: var(--gold-soft); color: var(--gold-deep); }
+.tag.equiv { background: var(--ochre-soft); color: var(--ochre-deep); }
+.tag.other { background: var(--surface-2); color: var(--muted); }
+
+/* 比价表 */
+.cmp-best td { background: var(--accent-soft); }
+.cmp-best td:first-child { box-shadow: inset 3px 0 0 var(--accent-deep); }
+.cmp-badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.cmp-badge.ok { background: var(--leaf-soft); color: var(--leaf-deep); }
+.cmp-badge.warn { background: var(--ochre-soft); color: var(--ochre-deep); }
+.cmp-cond { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.9; color: var(--ink-2); }
+
+/* 状态药丸（询价） */
+.status { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 99px; white-space: nowrap; }
+.status.pending { background: var(--surface-2); color: var(--muted); }
+.status.draft { background: var(--accent-soft); color: var(--accent-deep); }
+.status.sent { background: var(--ochre-soft); color: var(--ochre-deep); }
+.status.replied { background: var(--gold-soft); color: var(--gold-deep); }
+.status.quoted { background: var(--leaf-soft); color: var(--leaf-deep); }
+.status.closed { background: var(--surface-2); color: var(--faint); }
+
+pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--ink-2); }
+.muted { color: var(--muted); font-size: 12px; }
+code { font-family: var(--font-mono); }
+
+/* ============ 智能体控制台（深色终端） ============ */
+.console {
+  position: sticky; top: 82px;
+  height: calc(100vh - 106px);
+  display: flex; flex-direction: column;
+  background: var(--console-bg); border: 1px solid var(--console-border); border-radius: var(--r-l);
+  overflow: hidden;
+}
+.console-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 13px 16px; border-bottom: 1px solid var(--console-border); flex: none;
+}
+.console-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--console-accent); flex: none; box-shadow: 0 0 0 3px oklch(76% 0.14 58 / .18); }
+.console-title { font-size: 13px; font-weight: 700; color: var(--console-ink); letter-spacing: .02em; }
+.console-sub { font-size: 11px; color: var(--console-muted); font-weight: 400; margin-left: 2px; }
+.console-clear {
+  margin-left: auto; font-family: var(--font-sans); font-size: 11px; color: var(--console-muted);
+  background: none; border: 1px solid var(--console-border); border-radius: 99px; padding: 3px 10px; cursor: pointer;
+  transition: color .15s ease-out, border-color .15s ease-out;
+}
+.console-clear:hover { color: var(--console-ink); border-color: var(--console-muted); }
+
+.console-body { flex: 1; overflow-y: auto; padding: 14px 16px 18px; scrollbar-width: thin; scrollbar-color: var(--console-border) transparent; }
+.console-body::-webkit-scrollbar { width: 8px; }
+.console-body::-webkit-scrollbar-thumb { background: var(--console-border); border-radius: 4px; }
+
+.console-goal { display: flex; gap: 8px; }
+.console-goal input {
+  flex: 1; background: var(--console-surface); border: 1px solid var(--console-border);
+  color: var(--console-ink); font-size: 13px;
+}
+.console-goal input::placeholder { color: var(--console-muted); }
+.console-goal input:focus { border-color: var(--console-accent); box-shadow: 0 0 0 3px oklch(76% 0.14 58 / .15); }
+.console-goal .btn.primary { flex: none; }
+
+.console-chips { margin-top: 10px; }
+.chip {
+  display: inline-block; background: var(--console-surface); color: var(--console-ink);
+  border: 1px solid var(--console-border); border-radius: 99px; padding: 4px 12px;
+  font-size: 12px; cursor: pointer; transition: border-color .15s ease-out, color .15s ease-out;
+}
+.chip:hover { border-color: var(--console-accent); color: var(--console-accent); }
+
+.console-sec {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--console-muted);
+  margin: 18px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--console-border);
+}
+.console-sec .console-sec-sub { font-weight: 400; letter-spacing: 0; margin-left: auto; }
+
+#agent-trace:empty::after { content: "还没有运行记录。输入目标，看它自主规划、调用工具。"; display: block; font-size: 12px; color: var(--console-muted); line-height: 1.8; }
+
+.trace-step { border-left: 2px solid var(--console-accent); padding: 2px 0 2px 12px; margin-bottom: 14px; animation: fade-in .2s ease-out; }
+.trace-step .rnd { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--console-accent); letter-spacing: .1em; }
+.trace-label { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--console-muted); letter-spacing: .12em; margin-right: 8px; }
+.trace-thought { color: var(--console-ink); margin: 6px 0; font-size: 13px; line-height: 1.75; }
+.trace-tool { font-family: var(--font-mono); font-size: 12px; color: var(--console-accent); background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 4px 10px; margin: 6px 0; display: inline-block; }
+.trace-tool .raw { color: var(--console-muted); margin-left: 6px; }
+.trace-args { font-family: var(--font-mono); font-size: 11px; color: var(--console-muted); margin: 4px 0; word-break: break-all; }
+.trace-obs { background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 8px 10px; font-family: var(--font-mono); font-size: 11px; line-height: 1.7; color: var(--console-muted); max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+.agent-final { background: color-mix(in oklch, var(--console-accent) 12%, var(--console-bg)); border: 1px solid color-mix(in oklch, var(--console-accent) 35%, var(--console-bg)); border-radius: var(--r-m); padding: 12px 14px; margin-top: 6px; }
+.agent-final .trace-label { color: var(--console-accent); }
+.agent-final .final-body { color: var(--console-ink); font-size: 13px; line-height: 1.8; margin-top: 6px; }
+.trace-usage { font-family: var(--font-mono); font-size: 11px; color: var(--console-muted); margin-top: 10px; }
+
+/* Markdown 渲染（深色底） */
+.md-h { font-weight: 700; margin: 10px 0 4px; color: var(--console-ink); }
+.md-pre { background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 8px 10px; overflow: auto; font-size: 12px; margin: 6px 0; color: var(--console-ink); }
+.md-code { background: var(--console-surface); color: var(--console-accent); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+a { color: var(--accent); }
+.agent-final a, .trace-thought a { color: var(--console-accent); }
+table.md-tbl { margin: 8px 0; font-size: 12px; }
+table.md-tbl th { color: var(--console-muted); border-bottom: 1px solid var(--console-border); }
+table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--console-ink); }
+
+/* 历史 */
+.hist-item { border-bottom: 1px solid var(--console-border); padding: 8px 0; }
+.hist-item:last-child { border-bottom: 0; }
+.hist-summary { cursor: pointer; font-size: 12px; color: var(--console-ink); list-style: none; display: flex; align-items: baseline; gap: 8px; }
+.hist-summary::-webkit-details-marker { display: none; }
+.hist-summary::before { content: "▸"; color: var(--console-muted); font-size: 10px; transition: transform .15s ease-out; flex: none; }
+.hist-item[open] .hist-summary::before { transform: rotate(90deg); }
+.hist-goal { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hist-meta { font-family: var(--font-mono); font-size: 10px; color: var(--console-muted); flex: none; margin-left: auto; }
+.hist-body { font-size: 12px; color: var(--console-muted); padding: 8px 0 4px 14px; line-height: 1.8; white-space: pre-wrap; }
+
+/* ============ 导入 / 说明页 ============ */
+.page { max-width: 780px; }
+.page-head h2 { font-family: var(--font-serif); font-size: 24px; font-weight: 700; margin: 8px 0 6px; }
+.page-head p { font-size: 13px; color: var(--muted); margin: 0 0 8px; max-width: 62ch; }
+
+.guide { margin-top: 20px; }
+.guide-step { display: grid; grid-template-columns: 56px 1fr; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--border); }
+.guide-step:last-child { border-bottom: 0; }
+.guide-num { font-family: var(--font-serif); font-size: 30px; font-weight: 700; color: var(--accent-deep); line-height: 1; }
+.guide-step h3 { font-size: 14px; font-weight: 700; margin: 2px 0 8px; }
+.guide-step p { font-size: 13px; color: var(--ink-2); margin: 6px 0; line-height: 1.8; }
+.guide-step .muted { font-size: 12px; }
+.guide-step select { max-width: 340px; }
+.guide-step textarea { margin-top: 8px; }
+
+.bm-btn {
+  display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 4px;
+  background: var(--accent-deep); color: oklch(98% 0.01 85); text-decoration: none;
+  font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: var(--r-m);
+  transition: background .15s ease-out;
+}
+.bm-btn:hover { background: color-mix(in oklch, var(--accent-deep) 88%, black); }
+.bm-btn:active { transform: translateY(1px); }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); margin: 12px 0 4px; cursor: pointer; }
+.check input { width: auto; }
+
+.video-empty {
+  border: 1.5px dashed var(--border-strong); border-radius: var(--r-l);
+  padding: 44px 20px; text-align: center; color: var(--muted); margin-top: 12px;
+}
+.video-empty .t { font-size: 13px; font-weight: 600; }
+.video-empty .s { font-size: 12px; margin-top: 6px; }
+
+.tut-list { counter-reset: tut; list-style: none; margin: 10px 0 0; padding: 0; }
+.tut-list li { counter-increment: tut; position: relative; padding: 7px 0 7px 40px; font-size: 13px; color: var(--ink-2); line-height: 1.7; }
+.tut-list li::before {
+  content: counter(tut); position: absolute; left: 0; top: 9px;
+  width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-deep);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}
+.tut-list b { color: var(--ink); }
+
+.tut-block { margin-top: 28px; }
+.tut-block h3 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+.tut-block h3 .zone-index { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--r-s); padding: 1px 7px; }
+
+/* ============ 响应式 ============ */
+@media (max-width: 1240px) { .workbench-grid { grid-template-columns: minmax(0, 1fr) 350px; } }
+@media (max-width: 1100px) {
+  .workbench-grid { grid-template-columns: 1fr; }
+  .console { position: static; height: auto; max-height: 640px; }
+}
+@media (max-width: 920px) {
+  .sidebar { position: static; width: auto; flex-direction: row; align-items: center; gap: 14px; padding: 10px 16px; overflow-x: auto; }
+  .brand { border-bottom: 0; padding: 0; flex: none; }
+  .nav { flex-direction: row; margin-top: 0; flex: none; }
+  .nav-tab { white-space: nowrap; }
+  .side-stats, .side-foot { display: none; }
+  .main { margin-left: 0; }
+  .topbar, .pipeline, .content { margin-left: 0; padding-left: 16px; padding-right: 16px; }
+  .topbar { padding: 0 16px; }
+  .nt-grid { grid-template-columns: 1fr 1fr; }
+  .nt-grid .span2 { grid-column: span 2; }
+}
+@media (max-width: 640px) {
+  .nt-grid { grid-template-columns: 1fr; }
+  .nt-grid .span2 { grid-column: span 1; }
+  .pipeline { flex-wrap: wrap; }
+  .pipe-step { flex: 1 1 44%; }
+  .target-current { flex-wrap: wrap; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>1688 比价智能体 · 以款找货源</h1>
-  <div>
-    <button class="small ghost" onclick="showTab('demo')">👀 演示模式</button>
+
+<!-- ============ 侧栏 ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">渠</div>
+    <div>
+      <div class="brand-name">问渠</div>
+      <div class="brand-sub">1688 比价智能体</div>
+    </div>
   </div>
-</header>
-<div class="nav-tabs">
-  <button class="nav-tab active" onclick="showTab('home')">首页</button>
-  <button class="nav-tab" onclick="showTab('import')">导入书签</button>
-  <button class="nav-tab" onclick="showTab('tutorial')">使用说明</button>
+  <nav class="nav">
+    <button type="button" class="nav-tab active" data-tab="home" onclick="showTab('home')">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>
+      工作台
+    </button>
+    <button type="button" class="nav-tab" data-tab="import" onclick="showTab('import')">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h8a1 1 0 0 1 1 1V14.5l-5-2.5L3 14.5V2.5a1 1 0 0 1 1-1Z"/></svg>
+      导入书签
+    </button>
+    <button type="button" class="nav-tab" data-tab="tutorial" onclick="showTab('tutorial')">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M6 6a2 2 0 1 1 3 1.7c-.7.4-1 1-1 1.8"/><circle cx="8" cy="12" r=".4" fill="currentColor"/></svg>
+      使用说明
+    </button>
+  </nav>
+  <div class="side-stats">
+    <div class="side-stat"><span class="k">目标款</span><span class="v" id="stat-targets">–</span></div>
+    <div class="side-stat"><span class="k">当前款候选</span><span class="v" id="stat-products">–</span></div>
+    <div class="side-stat"><span class="k">店铺</span><span class="v" id="stat-shops">–</span></div>
+  </div>
+  <div class="side-foot">
+    <button type="button" class="btn default" onclick="showDemo()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.8a1 1 0 0 1 1.5-.87l8 5.2a1 1 0 0 1 0 1.74l-8 5.2A1 1 0 0 1 3 12.2V1.8Z"/></svg>
+      演示模式
+    </button>
+    <div class="side-status"><span class="dot"></span>本地服务运行中</div>
+  </div>
+</aside>
+
+<!-- ============ 主区 ============ -->
+<div class="main">
+  <header class="topbar">
+    <div>
+      <div class="page-title" id="page-title">工作台</div>
+      <div class="page-sub" id="page-sub">以款找源 · 全网比价</div>
+    </div>
+    <div class="topbar-right">
+      <div class="switcher">
+        <button type="button" class="switcher-btn" id="btn-switch" onclick="toggleSwitcher()" aria-haspopup="listbox">
+          <span class="switcher-thumb" id="switcher-thumb"><i></i></span>
+          <span class="switcher-name" id="switcher-name">未选择目标款</span>
+          <svg class="switcher-caret" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 4.5 3 3 3-3"/></svg>
+        </button>
+        <div class="switcher-pop" id="switcher-pop" role="listbox">
+          <div id="switcher-options"></div>
+          <button type="button" class="btn ghost sm ts-new" onclick="toggleSwitcher(false); openNewTargetForm()">＋ 新建目标款</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 流程步骤条 -->
+  <nav class="pipeline" id="pipeline">
+    <button type="button" class="pipe-step" data-zone="zone-target"><span class="pipe-num">1</span><span class="pipe-label">目标款</span><span class="pipe-count" id="pipe-c1"></span></button>
+    <button type="button" class="pipe-step" data-zone="zone-candidates"><span class="pipe-num">2</span><span class="pipe-label">候选商品</span><span class="pipe-count" id="pipe-c2"></span></button>
+    <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">3</span><span class="pipe-label">视觉匹配</span><span class="pipe-count" id="pipe-c3"></span></button>
+    <button type="button" class="pipe-step" data-zone="zone-inquiry"><span class="pipe-num">4</span><span class="pipe-label">询价</span><span class="pipe-count" id="pipe-c4"></span></button>
+    <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">5</span><span class="pipe-label">比价结论</span><span class="pipe-count" id="pipe-c5"></span></button>
+  </nav>
+
+  <main class="content">
+
+    <!-- ================= Tab: 工作台 ================= -->
+    <div id="tab-home" class="tab-content active">
+      <div class="workbench-grid">
+        <div class="work-col">
+
+          <!-- 01 目标款 -->
+          <section class="zone" id="zone-target">
+            <div class="zone-head">
+              <div class="zone-title"><span class="zone-index">01</span>目标款</div>
+              <div class="zone-actions">
+                <button type="button" class="btn danger-text sm" id="btn-delete-target" onclick="deleteCurrentTarget()" disabled>删除此款</button>
+                <button type="button" class="btn primary sm" id="btn-new-target" onclick="openNewTargetForm()">＋ 新建目标款</button>
+              </div>
+            </div>
+            <p class="zone-hint">以款找源的基准：图片用于视觉匹配，文字与属性用于核验。</p>
+            <div class="target-current">
+              <div class="target-preview" id="target-preview"></div>
+              <div class="target-info">
+                <div class="target-name" id="target-name">未选择目标款</div>
+                <div class="target-meta" id="target-meta">创建或切换一个目标款，开始比价工作流</div>
+              </div>
+              <div class="target-actions">
+                <button type="button" class="btn default sm" onclick="toggleSwitcher(true)">切换</button>
+              </div>
+            </div>
+            <div class="nt-form" id="new-target-form" hidden>
+              <div class="nt-grid">
+                <div class="field"><label>名称</label><input id="ts-name" placeholder="例：280g 纯棉落肩卫衣-藏青"></div>
+                <div class="field"><label>品类</label><input id="ts-cat" placeholder="衬衫/卫衣/牛仔裤" value="衬衫"></div>
+                <div class="field"><label>参考价（元，可选）</label><input id="ts-ref" type="number" step="0.01"></div>
+                <div class="field"><label>目标款图片</label><input id="ts-image" type="file" accept="image/*"></div>
+                <div class="field span2"><label>文字描述（面料 / 克重 / 版型 / 尺码）</label><textarea id="ts-desc" rows="2" placeholder="纯棉 280g 落肩 宽松版型 S-XXL"></textarea></div>
+                <div class="field span2"><label>结构化属性（JSON）</label><input id="ts-attr" placeholder='{"面料":"纯棉","克重":"280g"}'></div>
+              </div>
+              <div class="nt-actions">
+                <button type="button" class="btn primary" onclick="createTarget()">创建目标款</button>
+                <button type="button" class="btn default" onclick="toggleTargetForm(false)">取消</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 02 候选商品 -->
+          <section class="zone" id="zone-candidates">
+            <div class="zone-head">
+              <div class="zone-title"><span class="zone-index">02</span>候选商品</div>
+              <div class="zone-actions">
+                <button type="button" class="btn primary" id="btn-match" onclick="runMatch()">执行视觉匹配</button>
+                <button type="button" class="btn default" id="btn-compare" onclick="runComparison()">生成比价结论</button>
+                <button type="button" class="btn default" id="btn-export" onclick="exportComparison()" disabled>
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v8m0 0L4 6.5m3 3 3-3M2 11.5h10"/></svg>
+                  导出 Excel
+                </button>
+              </div>
+            </div>
+            <p class="zone-hint">书签从 1688 批量导入，或在此手动添加；匹配只对当前目标款下的候选执行。</p>
+            <div class="sub-row">
+              <span class="row-label">门店</span>
+              <select id="shop-select"></select>
+              <input id="shop-name" class="grow" placeholder="新门店名，例：义乌XX服饰">
+              <button type="button" class="btn default sm" onclick="createShop()">添加门店</button>
+            </div>
+            <div class="sub-row">
+              <span class="row-label">商品</span>
+              <input id="prod-title" class="grow" placeholder="候选商品标题">
+              <input id="prod-price" class="w-90" type="number" step="0.01" placeholder="标价 ¥">
+              <input id="prod-image" class="w-180" type="file" accept="image/*">
+              <input id="prod-attr" class="grow" placeholder='属性 JSON，可选'>
+              <button type="button" class="btn default sm" onclick="createProduct()">添加候选</button>
+            </div>
+            <div id="progress" style="display:none">
+              <div class="progress-track"><div id="progress-bar"></div></div>
+              <div id="progress-text"></div>
+            </div>
+          </section>
+
+          <!-- 03 匹配与比价 -->
+          <section class="zone" id="zone-result">
+            <div class="zone-head">
+              <div class="zone-title"><span class="zone-index">03</span>匹配与比价</div>
+            </div>
+            <div id="result">
+              <div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>
+            </div>
+          </section>
+
+          <!-- 04 询价工作台 -->
+          <section class="zone" id="zone-inquiry">
+            <div class="zone-head">
+              <div class="zone-title"><span class="zone-index">04</span>询价工作台</div>
+              <div class="zone-actions">
+                <button type="button" class="btn default sm" onclick="refreshInquiries()">
+                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 7A5.5 5.5 0 1 1 7 1.5c2 0 3.7 1 4.7 2.5M7 4v3l2 1"/><path d="M11.7 1.5v3h-3" transform="translate(0 .5)"/></svg>
+                  刷新列表
+                </button>
+              </div>
+            </div>
+            <p class="zone-hint">逐个店铺生成话术 → 去旺旺发送 → 回贴卖家回复 → 自动解析报价。</p>
+            <div id="workbench"></div>
+          </section>
+
+        </div>
+
+        <!-- 智能体控制台 -->
+        <aside class="console">
+          <div class="console-head">
+            <span class="console-dot"></span>
+            <span class="console-title">智能体控制台</span>
+            <span class="console-sub">ReAct · 自主规划</span>
+            <button type="button" class="console-clear" onclick="clearAgentHistory()">清空</button>
+          </div>
+          <div class="console-body">
+            <div class="console-goal">
+              <input id="agent-goal" placeholder="告诉它你要什么，例：帮我看看这个款哪家最便宜、有什么风险"
+                     onkeydown="if(event.key==='Enter')runAgent()">
+              <button type="button" class="btn primary" id="btn-agent" onclick="runAgent()">分析</button>
+            </div>
+            <div class="list console-chips">
+              <span class="chip" onclick="setGoal('帮我分析这个款哪家最便宜，给出采购建议')">哪家最便宜？</span>
+              <span class="chip" onclick="setGoal('这个款的数据够不够做比价？有什么问题')">数据够用吗？</span>
+              <span class="chip" onclick="setGoal('找出同款，并按价格排序，告诉我能省多少')">比价排序</span>
+              <span class="chip" onclick="setGoal('候选商品太少了，帮我生成1688搜索链接，教我怎么导入')">帮我找候选</span>
+            </div>
+            <div class="console-sec"><span>推理轨迹</span><span class="console-sec-sub">本次运行</span></div>
+            <div id="agent-trace"></div>
+            <div class="console-sec"><span>对话历史</span><span class="console-sec-sub">按目标款记忆</span></div>
+            <div id="agent-history"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ================= Tab: 导入书签 ================= -->
+    <div id="tab-import" class="tab-content">
+      <div class="page">
+        <div class="page-head">
+          <h2>导入书签</h2>
+          <p>在 1688 页面点一下书签，自动抓取标题、主图、价格、店铺并入库。支持搜索列表页批量导入与商品详情页单条导入。</p>
+        </div>
+        <div class="guide">
+          <div class="guide-step">
+            <div class="guide-num">0</div>
+            <div>
+              <h3>选择要导入到哪个目标款</h3>
+              <select id="target-select-import"></select>
+              <label class="check"><input type="checkbox" id="create-new-target"><span>将此页商品设为<b>新目标款</b>（面试演示用）</span></label>
+              <p class="muted">勾选后，在详情页点书签会先创建新目标款，再把当前商品挂到其下。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">1</div>
+            <div>
+              <h3>把书签拖到浏览器书签栏</h3>
+              <a id="bm-btn" class="bm-btn" href="#" onclick="return false;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8m0 0L5 7m3 3 3-3M2.5 12.5h11"/></svg>
+                导入 1688 商品
+              </a>
+              <p class="muted">拖不动就右键「复制链接地址」，手动新建书签并粘贴。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">2</div>
+            <div>
+              <h3>在 1688 页面点击书签</h3>
+              <p><b>方式 A（批量，推荐）</b>：在搜索列表页 <code>s.1688.com/selloffer/…</code> 点书签 → 抓取全页商品 → 批量导入。</p>
+              <p><b>方式 B（单条）</b>：在商品详情页 <code>detail.1688.com/offer/…</code> 点书签 → 导入当前商品。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">…</div>
+            <div>
+              <h3>排查：书签源码</h3>
+              <p class="muted">如需手动新建书签，把下面代码作为书签 URL：</p>
+              <textarea id="bm-code" rows="8" readonly></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= Tab: 使用说明 ================= -->
+    <div id="tab-tutorial" class="tab-content">
+      <div class="page">
+        <div class="page-head">
+          <h2>使用说明</h2>
+          <p>四步走完一次完整的以款找源：建目标款 → 导入候选 → 匹配 → 比价询价。</p>
+        </div>
+
+        <div class="tut-block">
+          <h3><span class="zone-index">01</span>快速上手</h3>
+          <ol class="tut-list">
+            <li><b>创建目标款</b>：工作台「＋ 新建目标款」，填名称并上传图片（视觉匹配必选）。</li>
+            <li><b>导入候选</b>：切到「导入书签」页拿书签，去 1688 搜索页或详情页点一下。</li>
+            <li><b>执行匹配</b>：回到工作台点「执行视觉匹配」，候选被分为完全同款 / 等效替代 / 已排除。</li>
+            <li><b>比价询价</b>：「生成比价结论」看价格与成交条件；询价工作台逐家出话术、回贴报价。</li>
+          </ol>
+        </div>
+
+        <div class="tut-block">
+          <h3><span class="zone-index">02</span>演示视频</h3>
+          <div class="video-empty">
+            <div class="t">演示视频待录制</div>
+            <div class="s">将覆盖：创建目标款 · 书签导入 · 视觉匹配 · 询价比价</div>
+          </div>
+        </div>
+
+        <div class="tut-block">
+          <h3><span class="zone-index">03</span>面试场景应对</h3>
+          <p class="muted" style="font-size:12px;margin:6px 0 0">面试官给出任何商品时，全程动态响应，无需提前准备：</p>
+          <ol class="tut-list">
+            <li>打开该商品的 1688 详情页。</li>
+            <li>在「导入书签」页勾选「将此页商品设为新目标款」。</li>
+            <li>点书签 → 自动创建目标款并导入该商品。</li>
+            <li>再搜同类关键词，点书签批量导入候选。</li>
+            <li>回工作台点「执行视觉匹配」→ 出分层结果，继续比价与询价。</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+  </main>
 </div>
 
-<main>
-  <!-- Tab: 首页 -->
-  <div id="tab-home" class="tab-content active">
-    <div class="card">
-      <h2>① 目标款</h2>
-      <div class="grid2">
-        <div>
-          <label>名称</label><input id="ts-name" placeholder="例：280g 纯棉落肩卫衣-藏青">
-          <label>文字描述（面料/克重/版型/尺码）</label>
-          <textarea id="ts-desc" rows="2" placeholder="纯棉 280g 落肩 宽松版型 S-XXL"></textarea>
-          <label>目标款图片（上传后视觉匹配会用）</label>
-          <input id="ts-image" type="file" accept="image/*">
-        </div>
-        <div>
-          <label>结构化属性（JSON）</label><input id="ts-attr" placeholder='{"面料":"纯棉","克重":"280g"}'>
-          <label>参考价（元，可选）</label><input id="ts-ref" type="number" step="0.01">
-          <label>品类</label><input id="ts-cat" placeholder="衬衫/卫衣/牛仔裤" value="衬衫">
-          <button onclick="createTarget()" style="margin-top:18px">创建目标款</button>
-        </div>
-      </div>
-      <div id="targets" class="list" style="margin-top:14px"></div>
-      <div id="target-preview" style="margin-top:12px"></div>
-    </div>
-
-    <div class="card" style="border:2px solid var(--accent)">
-      <h2>🤖 智能体工作台 <span class="muted" style="font-weight:400;font-size:12px">（自主规划 · 调用工具 · 输出推理轨迹）</span></h2>
-      <p class="muted">直接告诉它你要什么，它会自己决定先做什么、调用哪些工具、怎么下结论。</p>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input id="agent-goal" placeholder="例：帮我看看这个款哪家最便宜，有什么风险" style="flex:1"
-               onkeydown="if(event.key==='Enter')runAgent()">
-        <button onclick="runAgent()" id="btn-agent">让智能体分析</button>
-      </div>
-      <div class="list" style="margin-top:8px">
-        <span class="chip" onclick="setGoal('帮我分析这个款哪家最便宜，给出采购建议')">哪家最便宜？</span>
-        <span class="chip" onclick="setGoal('这个款的数据够不够做比价？有什么问题')">数据够用吗？</span>
-        <span class="chip" onclick="setGoal('找出同款，并按价格排序，告诉我能省多少')">比价排序</span>
-        <span class="chip" onclick="setGoal('候选商品太少了，帮我生成1688搜索链接，教我怎么导入')">帮我找候选</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
-        <h3 style="margin:0">对话历史 <span class="muted" style="font-weight:400;font-size:11px">（按目标款记忆，刷新不丢）</span></h3>
-        <button onclick="clearAgentHistory()" style="font-size:12px;padding:4px 10px">清空对话</button>
-      </div>
-      <div id="agent-history" style="margin-top:6px"></div>
-      <h3 style="margin-top:14px">本次运行</h3>
-      <div id="agent-trace"></div>
-    </div>
-
-    <div class="card">
-      <h2>② 门店 / 候选商品</h2>
-      <div class="grid2">
-        <div>
-          <label>门店</label>
-          <div style="display:flex;gap:8px">
-            <input id="shop-name" placeholder="例：义乌XX服饰">
-            <button onclick="createShop()">添加</button>
-          </div>
-          <select id="shop-select" style="margin-top:8px"></select>
-        </div>
-        <div>
-          <label>候选商品标题</label><input id="prod-title" placeholder="同款卫衣标题">
-          <label>候选商品图片（视觉匹配用）</label>
-          <input id="prod-image" type="file" accept="image/*">
-          <label>属性（JSON，可选）</label><input id="prod-attr" placeholder='{"面料":"纯棉","克重":"280g"}'>
-          <label>标价（元，可选）</label><input id="prod-price" type="number" step="0.01">
-          <button onclick="createProduct()" style="margin-top:8px">添加候选商品</button>
-        </div>
-      </div>
-      <div class="list" style="margin-top:14px">
-        <button onclick="runMatch()" id="btn-match">执行视觉匹配</button>
-        <button class="ghost" onclick="runComparison()" id="btn-compare">生成比价结论</button>
-        <button class="ghost" onclick="exportComparison()" id="btn-export" disabled>导出 Excel</button>
-      </div>
-      <div id="progress" style="display:none;margin-top:12px">
-        <div style="background:#e5e7eb;border-radius:6px;height:8px;overflow:hidden">
-          <div id="progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .3s"></div>
-        </div>
-        <div id="progress-text" class="muted" style="margin-top:6px"></div>
-      </div>
-      <div id="result" style="margin-top:14px"></div>
-    </div>
-
-    <div class="card">
-      <h2>③ 询价工作台</h2>
-      <div class="list" style="margin-bottom:12px">
-        <button onclick="refreshInquiries()">刷新列表</button>
-        <span class="muted" style="align-self:center">选中目标款后，逐个店铺生成话术 → 你去旺旺发送 → 回贴卖家回复 → 自动解析报价</span>
-      </div>
-      <div id="workbench"></div>
-    </div>
-  </div>
-
-  <!-- Tab: 导入书签 -->
-  <div id="tab-import" class="tab-content">
-    <div class="card">
-      <h2>📥 1688 候选商品 · 智能导入</h2>
-      <p class="muted">支持<strong>搜索列表页批量导入</strong>和<strong>商品详情页单条导入</strong>。</p>
-      
-      <div class="box" style="background:#f8fafc;border:1px solid #e3e5e8;border-radius:8px;padding:14px 18px;margin:14px 0">
-        <h3 style="margin:0 0 12px;font-size:15px">第 0 步：选择目标款</h3>
-        <select id="target-select-import"></select>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:8px">
-          <input type="checkbox" id="create-new-target">
-          <span>将此页商品设为<b>新目标款</b>（用于面试演示）</span>
-        </label>
-        <p class="muted">勾选后，点书签会先创建新目标款，再把当前商品挂在这个目标款下。</p>
-      </div>
-
-      <div class="box" style="background:#f8fafc;border:1px solid #e3e5e8;border-radius:8px;padding:14px 18px;margin:14px 0">
-        <h3 style="margin:0 0 12px;font-size:15px">第 1 步：拖书签到浏览器</h3>
-        <a id="bm-btn" class="bookmarklet-link" href="#" onclick="return false;">📥 导入1688商品</a>
-        <p class="muted">拖动蓝色按钮到书签栏；拖不动就右键复制链接地址新建书签。</p>
-      </div>
-
-      <div class="box" style="background:#f8fafc;border:1px solid #e3e5e8;border-radius:8px;padding:14px 18px;margin:14px 0">
-        <h3 style="margin:0 0 12px;font-size:15px">第 2 步：使用方法</h3>
-        <p><strong>方式 A（推荐）：</strong>在 1688 <code>s.1688.com/selloffer/...</code> 搜索列表页点书签 → 自动抓取页面上所有商品 → 批量导入</p>
-        <p><strong>方式 B：</strong>在 1688 商品详情页点书签 → 抓取当前商品 → 单条导入</p>
-      </div>
-
-      <div class="box" style="background:#f8fafc;border:1px solid #e3e5e8;border-radius:8px;padding:14px 18px;margin:14px 0">
-        <h3 style="margin:0 0 12px;font-size:15px">排查：书签源码</h3>
-        <textarea id="bm-code" rows="10" readonly></textarea>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tab: 使用说明 -->
-  <div id="tab-tutorial" class="tab-content">
-    <div class="tutorial-box">
-      <h3>🎯 快速上手指南</h3>
-      <ol class="tutorial-steps">
-        <li><strong>创建目标款</strong>：在首页 ① 区填名称 + 上传图片（必选）→ 点击"创建"</li>
-        <li><strong>导入候选</strong>：切换到"导入书签"页 → 拖书签到浏览器 → 去 1688 点一下</li>
-        <li><strong>执行匹配</strong>：回到首页 → 点"执行视觉匹配" → 看结果</li>
-        <li><strong>生成比价</strong>：点"生成比价结论" → 看价格对比 + 议价建议</li>
-      </ol>
-    </div>
-    
-    <div class="card">
-      <h2>📺 演示视频</h2>
-      <p class="muted">观看完整操作流程（待录制后替换）</p>
-      <div style="background:#f0f0f0;border-radius:8px;padding:40px;text-align:center;color:#999;margin-top:12px">
-        [这里将放置演示视频]<br>
-        <small>功能包括：创建目标款、书签导入、视觉匹配、询价比价</small>
-      </div>
-    </div>
-    
-    <div class="card">
-      <h2>面试场景应对方案</h2>
-      <p>面试官给你看任何商品时：</p>
-      <ol class="tutorial-steps">
-        <li>打开该商品的 1688 详情页</li>
-        <li>在系统里勾选"将此页商品设为新目标款"</li>
-        <li>点书签 → 自动创建目标款 + 导入</li>
-        <li>再搜同类关键词 → 点书签批量导入</li>
-        <li>回首页点"执行视觉匹配" → 出结果</li>
-      </ol>
-      <p class="muted">全程无需提前准备，动态响应任何商品。</p>
-    </div>
-  </div>
-</main>
-
 <script>
-// Tab 切换
+// ================= Tab 切换 =================
 function showTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   const tabEl = document.getElementById('tab-' + name);
   if (tabEl) tabEl.classList.add('active');
-  // 找到被点击的 nav-tab 并高亮
-  const tabs = document.querySelectorAll('.nav-tab');
-  for (const t of tabs) {
-    if (t.textContent.includes(name === 'home' ? '首页' : name === 'import' ? '导入书签' : '使用说明')) {
-      t.classList.add('active');
-      break;
-    }
-  }
-  // 切到导入页时同步刷新目标款下拉框
-  if (name === 'import') {
-    refreshImportTargets(currentTargetId);
-  }
+  const navEl = document.querySelector('.nav-tab[data-tab="' + name + '"]');
+  if (navEl) navEl.classList.add('active');
+  const titles = {
+    home: ['工作台', '以款找源 · 全网比价'],
+    import: ['导入书签', '从 1688 页面一键抓取候选'],
+    tutorial: ['使用说明', '快速上手与面试演示'],
+  };
+  const t = titles[name] || titles.home;
+  document.getElementById('page-title').textContent = t[0];
+  document.getElementById('page-sub').textContent = t[1];
+  document.getElementById('pipeline').classList.toggle('is-hidden', name !== 'home');
+  if (name === 'import') refreshImportTargets(currentTargetId);
+  window.scrollTo({ top: 0 });
 }
 
 let currentTargetId = null;
 let currentTarget = null;
 let shops = [];
 let inquiries = [];
+let targetsCount = 0;
+let lastMatchResult = null;
+let importCurrentTargetId = null;
 
 async function api(path, opts={}) {
-  const r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
-  return r.json();
+  let r;
+  try {
+    r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  } catch (e) {
+    return { error: '网络请求失败：' + (e && e.message ? e.message : e) };
+  }
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = null; }
+  if (!r.ok || d === null) {
+    const detail = (d && d.error) ? '：' + d.error : '';
+    return { error: `服务端错误（HTTP ${r.status}）${detail}` };
+  }
+  return d;
 }
 async function apiForm(path, formData) {
   const r = await fetch(path, {method:'POST', body: formData});
   return r.json();
 }
 
-// ---- 目标款 ----
+// ================= 目标款 =================
 async function refreshTargets() {
   const ts = await api('/api/targets');
-  const el = document.getElementById('targets');
-  el.innerHTML = ts.map(t => `<span class="chip ${t.id===currentTargetId?'active':''}" onclick="selectTarget('${t.id}')">${t.name}<span class="chip-del" title="删除此目标款" onclick="event.stopPropagation();deleteTarget('${t.id}','${escapeAttr(t.name)}')">×</span></span>`).join('');
-  const mine = ts.find(t=>t.id===currentTargetId);
-  if (mine && mine.image_paths && mine.image_paths.length) {
-    document.getElementById('target-preview').innerHTML = `<img class="thumb" src="${mine.image_paths[0]}" title="目标款图">`;
-  } else {
-    document.getElementById('target-preview').innerHTML = '';
+  if (!Array.isArray(ts)) return;
+  targetsCount = ts.length || 0;
+  const statEl = document.getElementById('stat-targets');
+  if (statEl) statEl.textContent = targetsCount;
+
+  // 顶栏切换器列表
+  const pop = document.getElementById('switcher-options');
+  if (pop) {
+    pop.innerHTML = ts.length ? ts.map(t => `
+      <button type="button" class="ts-option ${t.id===currentTargetId?'on':''}" onclick="selectTarget('${t.id}')">
+        <span class="ts-thumb">${t.image_paths && t.image_paths.length ? `<img src="${t.image_paths[0]}" alt="">` : '<i></i>'}</span>
+        <span class="ts-name">${escapeHtml(t.name)}</span>
+        <span class="ts-meta">${escapeHtml(t.category || '')}</span>
+      </button>`).join('') : '<div class="ts-empty">还没有目标款，先创建一个</div>';
   }
+
+  // 当前目标款展示
+  const mine = ts.find(t=>t.id===currentTargetId);
+  currentTarget = mine || null;
+  const nameEl = document.getElementById('target-name');
+  const metaEl = document.getElementById('target-meta');
+  const prevEl = document.getElementById('target-preview');
+  const delBtn = document.getElementById('btn-delete-target');
+  const swName = document.getElementById('switcher-name');
+  const swThumb = document.getElementById('switcher-thumb');
+  if (mine) {
+    if (nameEl) nameEl.textContent = mine.name;
+    if (metaEl) {
+      const bits = [];
+      if (mine.category) bits.push(mine.category);
+      if (mine.reference_price != null) bits.push('参考价 ¥' + Number(mine.reference_price).toFixed(2));
+      if (mine.description) bits.push(mine.description);
+      metaEl.textContent = bits.join(' · ') || '—';
+    }
+    if (prevEl) prevEl.innerHTML = (mine.image_paths && mine.image_paths.length) ? `<img class="thumb" src="${mine.image_paths[0]}" alt="目标款图">` : '';
+    if (delBtn) delBtn.disabled = false;
+    if (swName) swName.textContent = mine.name;
+    if (swThumb) swThumb.innerHTML = (mine.image_paths && mine.image_paths.length) ? `<img src="${mine.image_paths[0]}" alt="">` : '<i></i>';
+  } else {
+    if (nameEl) nameEl.textContent = '未选择目标款';
+    if (metaEl) metaEl.textContent = '创建或切换一个目标款，开始比价工作流';
+    if (prevEl) prevEl.innerHTML = '';
+    if (delBtn) delBtn.disabled = true;
+    if (swName) swName.textContent = '未选择目标款';
+    if (swThumb) swThumb.innerHTML = '<i></i>';
+  }
+  updatePipeline();
 }
-function escapeAttr(s) {
-  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+
+function deleteCurrentTarget() {
+  if (!currentTargetId || !currentTarget) return;
+  deleteTarget(currentTargetId, currentTarget.name || '');
 }
+
 async function deleteTarget(id, name) {
-  if (!confirm('确定删除目标款《' + name + '》？\\n\\n该目标款下的所有候选商品、询价和报价都会被一并删除，且无法恢复。')) return;
+  if (!confirm('确定删除目标款《' + name + '》？\n\n该目标款下的所有候选商品、询价和报价都会被一并删除，且无法恢复。')) return;
   const r = await api(`/api/targets/${id}`, {method:'DELETE'});
   if (r.ok) {
     const d = r.deleted || {};
     if (currentTargetId === id) {
       currentTargetId = null;
-      document.getElementById('result').innerHTML = '';
+      lastMatchResult = null;
+      document.getElementById('result').innerHTML = '<div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
       document.getElementById('workbench').innerHTML = '<p class="muted">请先选择或创建一个目标款</p>';
+      document.getElementById('btn-export').disabled = true;
     }
     await refreshTargets();
     await refreshInquiries();
     try { await refreshImportTargets(currentTargetId); } catch(e) {}
-    alert('✅ 已删除\\n商品 ' + (d.product||0) + ' 个、询价 ' + (d.inquiry||0) + ' 条、报价 ' + (d.quote||0) + ' 条');
+    alert('✅ 已删除\n商品 ' + (d.product||0) + ' 个、询价 ' + (d.inquiry||0) + ' 条、报价 ' + (d.quote||0) + ' 条');
   } else {
     alert('❌ 删除失败：' + (r.error || '未知错误'));
   }
 }
+
 function selectTarget(id) {
   currentTargetId = id;
+  lastMatchResult = null;
+  toggleSwitcher(false);
   syncCurrentTarget(id);   // 同步给书签使用
   refreshTargets();
   refreshInquiries();
   loadAgentHistory();      // 按目标款切换对话记忆
 }
+
 async function createTarget() {
+  const name = document.getElementById('ts-name').value.trim();
+  if (!name) { alert('先填写目标款名称'); return; }
   const form = new FormData();
-  form.append('name', document.getElementById('ts-name').value);
+  form.append('name', name);
   form.append('description', document.getElementById('ts-desc').value || '');
   form.append('attributes_json', document.getElementById('ts-attr').value || '{}');
   form.append('reference_price', document.getElementById('ts-ref').value || '');
@@ -339,27 +906,94 @@ async function createTarget() {
     return;
   }
   currentTargetId = t.id;
+  toggleTargetForm(false);
   await syncCurrentTarget(t.id);   // 新目标款立即成为当前款
-  await refreshTargets();          // 刷新首页标签
+  await refreshTargets();          // 刷新首页展示
   await refreshImportTargets(t.id); // 刷新导入页下拉框，并选中新目标款
   await refreshInquiries();
 }
 
-// ---- 门店 ----
+// 新建目标款表单开合
+function openNewTargetForm() {
+  toggleSwitcher(false);
+  const form = document.getElementById('new-target-form');
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('ts-name').focus();
+}
+function toggleTargetForm(show) {
+  document.getElementById('new-target-form').hidden = !show;
+}
+
+// 顶栏切换器开合
+function toggleSwitcher(force) {
+  const pop = document.getElementById('switcher-pop');
+  if (!pop) return;
+  const open = force !== undefined ? force : !pop.classList.contains('open');
+  pop.classList.toggle('open', open);
+}
+document.addEventListener('click', e => {
+  const pop = document.getElementById('switcher-pop');
+  if (!pop || !pop.classList.contains('open')) return;
+  if (!e.target.closest('#switcher-pop') && !e.target.closest('#btn-switch')) toggleSwitcher(false);
+});
+
+// ================= 流程步骤条 =================
+async function updatePipeline() {
+  const steps = document.querySelectorAll('.pipe-step');
+  if (!steps.length) return;
+  let products = [];
+  if (currentTargetId) {
+    try { products = await api(`/api/targets/${currentTargetId}/products`); } catch (e) {}
+  }
+  const matched = lastMatchResult
+    ? ((lastMatchResult.exact || []).length + (lastMatchResult.equivalent || []).length)
+    : products.filter(p => p.tier === 'exact' || p.tier === 'equivalent').length;
+  const inquiryCount = (inquiries || []).length;
+  const quoted = (inquiries || []).filter(q => q.status === 'quoted').length;
+  const counts = [currentTargetId ? 1 : 0, products.length, matched, inquiryCount, quoted];
+
+  let seenActive = false;
+  counts.forEach((c, i) => {
+    const el = steps[i];
+    if (!el) return;
+    el.classList.remove('done', 'active', 'todo');
+    if (c > 0) el.classList.add('done');
+    else if (!seenActive && (i === 0 || counts[i-1] > 0)) { el.classList.add('active'); seenActive = true; }
+    else el.classList.add('todo');
+    const badge = el.querySelector('.pipe-count');
+    if (badge) badge.textContent = c > 0 ? String(c) : '';
+  });
+
+  const sp = document.getElementById('stat-products');
+  if (sp) sp.textContent = products.length;
+}
+document.querySelectorAll('.pipe-step').forEach(el => {
+  el.addEventListener('click', () => {
+    const zone = document.getElementById(el.dataset.zone);
+    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// ================= 门店 =================
 async function loadShops() {
-  shops = await api('/api/shops');
+  const list = await api('/api/shops');
+  shops = Array.isArray(list) ? list : [];
   const sel = document.getElementById('shop-select');
   sel.innerHTML = shops.map(s => `<option value="${s.id}">${s.name}${s.location?(' · '+s.location):''}</option>`).join('');
+  const statEl = document.getElementById('stat-shops');
+  if (statEl) statEl.textContent = shops.length || 0;
+  updatePipeline();
 }
 async function createShop() {
-  const name = document.getElementById('shop-name').value;
+  const name = document.getElementById('shop-name').value.trim();
   if (!name) return alert('填写门店名');
   await api('/api/shops', {method:'POST', body: JSON.stringify({name})});
   document.getElementById('shop-name').value = '';
   loadShops();
 }
 
-// ---- 候选商品 ----
+// ================= 候选商品 =================
 async function createProduct() {
   if (!currentTargetId) return alert('先选择目标款');
   const sel = document.getElementById('shop-select');
@@ -367,19 +1001,21 @@ async function createProduct() {
   const form = new FormData();
   form.append('target_style_id', currentTargetId);
   form.append('shop_id', sel.value);
-  form.append('title', document.getElementById('prod-title').value);
+  form.append('title', document.getElementById('prod-title').value.trim());
   form.append('attributes_json', document.getElementById('prod-attr').value || '{}');
   form.append('listed_price', document.getElementById('prod-price').value || '');
   const file = document.getElementById('prod-image').files[0];
   if (file) form.append('image', file);
-  await apiForm('/api/products', form);
+  const r = await apiForm('/api/products', form);
+  if (r && r.error) { alert('❌ 添加失败：' + r.error); return; }
   document.getElementById('prod-title').value = '';
   document.getElementById('prod-image').value = '';
   document.getElementById('prod-attr').value = '';
   document.getElementById('prod-price').value = '';
+  updatePipeline();
 }
 
-// ---- 匹配 / 比价 ----
+// ================= 匹配 / 比价 =================
 async function runMatch() {
   if (!currentTargetId) return alert('先选择目标款');
   const btn = document.getElementById('btn-match');
@@ -425,42 +1061,41 @@ async function runMatch() {
   text.textContent = `完成：本次匹配 ${st.matched_now ?? '?'} 个，复用 ${st.reused ?? 0} 个，耗时 ${st.elapsed_sec ?? '?'} 秒`;
   setTimeout(() => { box.style.display = 'none'; bar.style.width = '0%'; }, 6000);
 
-  // 记录最近一次匹配结果，供导出使用
+  // 记录最近一次匹配结果，供导出与步骤条使用
   lastMatchResult = r;
   document.getElementById('btn-export').disabled = false;
 
   let html = '';
   const render = (title, list, cls) => {
     if (!list.length) return '';
-    let h = `<div class="match-col"><h3>${title} (${list.length})</h3>`;
+    let h = `<div class="match-col"><h3>${title} <span class="n">${list.length}</span></h3>`;
     h += list.map(m => {
       const img = m.product && m.product.image_paths && m.product.image_paths.length
-        ? `<img src="${m.product.image_paths[0]}">` : '';
+        ? `<img src="${m.product.image_paths[0]}" alt="">` : '';
       const price = m.product && m.product.listed_price != null
-        ? `<span style="margin-left:8px;color:#059669;font-weight:600">¥${Number(m.product.listed_price).toFixed(2)}</span>`
-        : '<span class="muted" style="margin-left:8px">无标价</span>';
+        ? `<span class="price">¥${Number(m.product.listed_price).toFixed(2)}</span>`
+        : '<span class="muted">无标价</span>';
       return `<div class="match-card">
         ${img}
         <div class="info">
-          <div class="shop">${m.shop_name || m.product_id}${price}</div>
+          <div class="shop">${escapeHtml(m.shop_name || m.product_id || '')}${price}</div>
           <div class="tag ${cls}">${m.status}</div>
-          <div class="reason">${m.reason}</div>
+          <div class="reason">${escapeHtml(m.reason || '')}</div>
         </div>
       </div>`;
     }).join('');
     h += '</div>';
     return h;
   };
-  html += render('✅ 完全同款', r.exact, 'exact');
-  html += render('⚠️ 等效替代', r.equivalent, 'equiv');
-  html += render('· 已排除', r.rejected, 'other');
-  html += render('· 未核验候选', r.candidate, 'other');
-  document.getElementById('result').innerHTML = html || '<p class="muted">无匹配结果</p>';
+  html += render('完全同款', r.exact, 'exact');
+  html += render('等效替代', r.equivalent, 'equiv');
+  html += render('已排除', r.rejected, 'other');
+  html += render('未核验候选', r.candidate, 'other');
+  document.getElementById('result').innerHTML = html || '<div class="empty">无匹配结果</div>';
+  updatePipeline();
 }
 
-let lastMatchResult = null;
-
-// ---- 智能体 ----
+// ================= 智能体 =================
 function setGoal(text) {
   document.getElementById('agent-goal').value = text;
   runAgent();
@@ -476,7 +1111,7 @@ const TOOL_CN = {
   import_products: '导入商品链接',
 };
 
-// ---- 智能体对话历史（持久化在 agent_run 表，刷新/重开都在）----
+// 智能体对话历史（持久化在 agent_run 表，刷新/重开都在）
 async function loadAgentHistory() {
   const box = document.getElementById('agent-history');
   if (!box) return;
@@ -486,18 +1121,18 @@ async function loadAgentHistory() {
     runs = await api(`/api/agent/history${q}`);
   } catch (e) { runs = []; }
   if (!runs || !runs.length) {
-    box.innerHTML = '<p class="muted" style="font-size:12px;margin:4px 0">暂无历史（智能体每次运行的轨迹和结论都会存在这里）</p>';
+    box.innerHTML = '';
     return;
   }
   box.innerHTML = runs.map(r => {
     const total = (r.prompt_tokens || 0) + (r.completion_tokens || 0);
     const when = (r.created_at || '').slice(5, 16).replace('T', ' ');
-    return `<details style="border-bottom:1px solid var(--border);padding:6px 2px">
-      <summary style="cursor:pointer;font-size:13px">
-        <b>${escapeHtml((r.goal || '').slice(0, 40))}</b>
-        <span class="muted" style="font-size:11px;margin-left:6px">${when} · ${total} tokens</span>
+    return `<details class="hist-item">
+      <summary class="hist-summary">
+        <span class="hist-goal">${escapeHtml((r.goal || '').slice(0, 40))}</span>
+        <span class="hist-meta">${when} · ${total} tokens</span>
       </summary>
-      <div style="font-size:12px;padding:6px 4px;white-space:pre-wrap">${escapeHtml(r.final_answer || '（无结论）')}</div>
+      <div class="hist-body">${escapeHtml(r.final_answer || '（无结论）')}</div>
     </details>`;
   }).join('');
 }
@@ -517,8 +1152,8 @@ async function runAgent() {
   const box = document.getElementById('agent-trace');
   btn.disabled = true;
   btn.textContent = '思考中…';
-  box.innerHTML = `<div class="trace-step"><div class="rnd">正在启动</div>
-    <div class="trace-thought">智能体正在规划任务…（每一步都会调用真实工具，可能需要几十秒）</div></div>`;
+  box.innerHTML = `<div class="trace-step"><div class="rnd">RUNNING</div>
+    <div class="trace-thought"><span class="trace-label">启动</span>智能体正在规划任务…（每一步都会调用真实工具，可能需要几十秒）</div></div>`;
 
   let r;
   try {
@@ -527,60 +1162,59 @@ async function runAgent() {
       body: JSON.stringify({goal, target_id: currentTargetId}),
     });
   } catch (e) {
-    box.innerHTML = `<div class="agent-final" style="background:#fef2f2;border-color:#fecaca">请求失败：${e.message}</div>`;
-    btn.disabled = false; btn.textContent = '让智能体分析';
+    box.innerHTML = `<div class="agent-final" style="background:var(--danger-soft);border-color:var(--danger)"><span class="trace-label" style="color:var(--danger)">失败</span><div class="final-body">请求失败：${escapeHtml(e.message)}</div></div>`;
+    btn.disabled = false; btn.textContent = '分析';
     return;
   } finally {
     if (btn.textContent === '思考中…') {
       btn.disabled = false;
-      btn.textContent = '让智能体分析';
+      btn.textContent = '分析';
     }
   }
 
   if (r.error) {
-    box.innerHTML = `<div class="agent-final" style="background:#fef2f2;border-color:#fecaca">错误：${r.error}</div>`;
+    box.innerHTML = `<div class="agent-final" style="background:var(--danger-soft);border-color:var(--danger)"><span class="trace-label" style="color:var(--danger)">错误</span><div class="final-body">${escapeHtml(r.error)}</div></div>`;
     return;
   }
 
   const steps = r.steps || [];
   let html = '';
   for (const s of steps) {
-    html += `<div class="trace-step">
-      <div class="rnd">第 ${s.round} 轮</div>`;
+    html += `<div class="trace-step"><div class="rnd">R${s.round}</div>`;
     if (s.thought) {
-      html += `<div class="trace-thought">💭 ${renderMarkdown(s.thought)}</div>`;
+      html += `<div class="trace-thought"><span class="trace-label">思考</span>${renderMarkdown(s.thought)}</div>`;
     }
     if (s.tool) {
       const cn = TOOL_CN[s.tool] || s.tool;
-      html += `<div class="trace-tool">🔧 ${cn} <span style="opacity:.7">${escapeHtml(s.tool)}</span></div>`;
+      html += `<div class="trace-tool">▸ ${cn}<span class="raw">${escapeHtml(s.tool)}</span></div>`;
       const argsStr = s.args && Object.keys(s.args).length ? JSON.stringify(s.args) : '';
-      if (argsStr) html += `<div class="muted" style="font-size:11px">参数 ${escapeHtml(argsStr)}</div>`;
+      if (argsStr) html += `<div class="trace-args">参数 ${escapeHtml(argsStr)}</div>`;
       if (s.observation) {
-        html += `<div class="trace-obs">👁 ${escapeHtml(s.observation.slice(0, 600))}${s.observation.length > 600 ? '\n…(已省略)' : ''}</div>`;
+        html += `<div class="trace-obs"><span class="trace-label">观察</span>${escapeHtml(s.observation.slice(0, 600))}${s.observation.length > 600 ? '\n…(已省略)' : ''}</div>`;
       }
     }
     html += `</div>`;
   }
   if (r.final_answer) {
-    html += `<div class="agent-final"><b>🎯 结论</b><div style="margin-top:8px">${renderMarkdown(r.final_answer)}</div></div>`;
+    html += `<div class="agent-final"><span class="trace-label">结论</span><div class="final-body">${renderMarkdown(r.final_answer)}</div></div>`;
   }
   if (r.usage) {
     const u = r.usage;
     const total = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
     const cost = (u.cost_cny !== null && u.cost_cny !== undefined)
       ? `，约 ¥${Number(u.cost_cny).toFixed(3)}` : '';
-    html += `<div class="muted" style="font-size:11px;margin-top:6px">💰 本次消耗 ${total} tokens（输入 ${u.prompt_tokens || 0} / 输出 ${u.completion_tokens || 0}，${u.requests || 0} 次调用）${cost}</div>`;
+    html += `<div class="trace-usage">本次消耗 ${total} tokens（输入 ${u.prompt_tokens || 0} / 输出 ${u.completion_tokens || 0}，${u.requests || 0} 次调用）${cost}</div>`;
   }
   box.innerHTML = html || '<p class="muted">智能体没有返回内容</p>';
   loadAgentHistory();   // 历史里追加本次运行
-
-  btn.disabled = false;
-  btn.textContent = '让智能体分析';
 }
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 
 // 轻量 Markdown 渲染：先转义（防 XSS），再还原受支持的语法
@@ -590,20 +1224,20 @@ function renderMarkdown(text) {
 
   // 代码块 ```...```
   s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (m, code) =>
-    `<pre style="background:#f1f5f9;padding:8px;border-radius:6px;overflow:auto;font-size:12px">${code}</pre>`);
+    `<pre class="md-pre">${code}</pre>`);
 
   // 行内代码 `xxx`
-  s = s.replace(/`([^`\n]+)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">$1</code>');
+  s = s.replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>');
 
   // 链接 [文字](url) —— 只允许 http(s)，且新窗口打开
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (m, label, url) =>
-      `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${label}</a>`);
+      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
 
   // 裸链接
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
     (m, pre, url) =>
-      `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${url}</a>`);
+      `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
 
   // 粗体 **xxx**
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
@@ -614,20 +1248,19 @@ function renderMarkdown(text) {
     if (lines.length < 2) return block;
     const cells = l => l.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
     const head = cells(lines[0]);
-    // 第二行是分隔线 |---|---|
     const isSep = /^\|?[\s:-]+\|/.test(lines[1]);
     const body = lines.slice(isSep ? 2 : 1);
-    let t = '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">';
-    t += '<tr>' + head.map(h => `<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">${h}</th>`).join('') + '</tr>';
+    let t = '<table class="md-tbl">';
+    t += '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>';
     for (const row of body) {
-      t += '<tr>' + cells(row).map(c => `<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">${c}</td>`).join('') + '</tr>';
+      t += '<tr>' + cells(row).map(c => `<td>${c}</td>`).join('') + '</tr>';
     }
     t += '</table>';
     return t;
   });
 
   // 标题 ###
-  s = s.replace(/^#{1,6}\s+(.+)$/gm, '<div style="font-weight:700;margin:10px 0 4px">$1</div>');
+  s = s.replace(/^#{1,6}\s+(.+)$/gm, '<div class="md-h">$1</div>');
 
   // 换行
   s = s.replace(/\n/g, '<br>');
@@ -641,11 +1274,12 @@ async function exportComparison() {
   const rows = r.rows || [];
   if (!rows.length) return alert('暂无可导出的比价数据');
 
-  const headers = ['店铺', '商品', '价格', '来源', '页面标价', 'MOQ', '含税', '运费', '阶梯价',
+  const headers = ['店铺', '商品', '价格', '来源', '页面标价', 'MOQ', '含税', '运费', '现货', '发货时效', '阶梯价',
                    '匹配状态', '可比', '条件备注', '链接'];
   const tierMap = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
   const srcMap = {listed:'标价', quoted:'报价'};
   const taxMap = {included:'含税', excluded:'不含税', unknown:'未知'};
+  const stockMap = {in_stock:'有现货', pre_sale:'预售', custom:'定制', unknown:'未知'};
   const fmtTiers = t => (t || []).map(x => `${x.qty}件及以上${x.price}元`).join('；');
 
   const esc = v => {
@@ -659,6 +1293,9 @@ async function exportComparison() {
       esc(x.shop_name), esc(x.title), esc(x.price), esc(srcMap[x.price_source] || x.price_source),
       esc(x.listed_price ?? ''), esc(x.moq ?? ''), esc(taxMap[x.tax] || x.tax || '未知'),
       esc(x.includes_shipping === true ? '包邮' : x.includes_shipping === false ? '不包邮' : '未知'),
+      esc(stockMap[x.stock_status] || '未知'),
+      esc(x.lead_time_hours !== null && x.lead_time_hours !== undefined
+          ? (x.lead_time_hours < 24 ? `${x.lead_time_hours}小时内` : `${Math.round(x.lead_time_hours/24)}天内`) : ''),
       esc(fmtTiers(x.tiers)), esc(tierMap[x.tier] || x.tier), esc(x.comparable ? '是' : '否'),
       esc(x.condition_note), esc(x.url),
     ].join(','));
@@ -682,16 +1319,27 @@ async function exportComparison() {
   document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
 }
+
 const TIER_CN = {exact:'✅ 完全同款', equivalent:'⚠️ 等效替代', unverified:'· 未核验', rejected:'· 已排除'};
 const SRC_CN = {listed:'标价', quoted:'报价'};
 const TAX_CN = {included:'含税', excluded:'不含税', unknown:'含税未知'};
+const STOCK_CN = {in_stock:'✅ 有现货', pre_sale:'🕐 预售', custom:'🛠 定制', unknown:'现货未知'};
 
-// 成交条件六维中的四维（价格/匹配层级在专属列）：MOQ / 含税 / 运费 / 阶梯价
+// 发货时效（小时）：<24h 显示「N小时」，≥24h 折算「N天内」
+function fmtLeadTime(h) {
+  if (h === null || h === undefined) return null;
+  return h < 24 ? `${h}小时内发货` : `${Math.round(h / 24)}天内发货`;
+}
+
+// 成交条件六维（价格/匹配层级在专属列）：MOQ / 含税 / 运费 / 现货 / 发货时效 / 阶梯价
 function fmtConditions(x) {
   const parts = [`MOQ ${x.moq ?? '未知'}`];
   parts.push(TAX_CN[x.tax] || x.tax || '含税未知');
   parts.push(x.includes_shipping === true ? '包邮'
     : x.includes_shipping === false ? '不包邮' : '运费未知');
+  parts.push(STOCK_CN[x.stock_status] || '现货未知');
+  const lead = fmtLeadTime(x.lead_time_hours);
+  if (lead) parts.push(`<b style="color:var(--accent-deep)">${lead}</b>`);
   if (x.tiers && x.tiers.length) {
     parts.push('阶梯价 ' + x.tiers.map(t => `${t.qty}件↑${Number(t.price).toFixed(2)}元`).join('，'));
   }
@@ -701,10 +1349,11 @@ function fmtConditions(x) {
 async function runComparison() {
   if (!currentTargetId) return alert('先选择目标款');
   const r = await api(`/api/targets/${currentTargetId}/comparison`, {method:'POST'});
-  let html = `<h3>综述</h3><p>${r.summary||''}</p>`;
+  if (r.error) { alert('生成失败：' + r.error); return; }
+  let html = `<div class="cmp-summary"><div class="trace-label" style="color:var(--accent-deep)">综述</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.summary||''}</p></div>`;
   if (r.rows && r.rows.length) {
-    html += `<table><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>匹配</th>`
-          + `<th>可比性</th><th>成交条件</th><th>备注</th></tr>`;
+    html += `<table><thead><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>匹配</th>`
+          + `<th>可比性</th><th>成交条件</th><th>备注</th></tr></thead><tbody>`;
     let bestMarked = false;
     html += r.rows.map(x => {
       const price = (x.price === null || x.price === undefined) ? '-' : Number(x.price).toFixed(2);
@@ -715,8 +1364,8 @@ async function runComparison() {
       let rowCls = '';
       if (x.comparable && !bestMarked) { rowCls = ' class="cmp-best"'; bestMarked = true; }
       const compBadge = x.comparable
-        ? '<span class="cmp-badge ok">✅ 可硬比价</span>'
-        : '<span class="cmp-badge warn">⚠️ 仅参考</span>';
+        ? '<span class="cmp-badge ok">可硬比价</span>'
+        : '<span class="cmp-badge warn">仅参考</span>';
       return `<tr${rowCls}>
         <td>${escapeHtml(x.shop_name)||''}</td>
         <td title="${escapeAttr(x.title)}">${escapeHtml(title)}</td>
@@ -728,51 +1377,55 @@ async function runComparison() {
         <td class="muted">${escapeHtml(x.condition_note)}</td>
       </tr>`;
     }).join('');
-    html += '</table>';
-    html += `<p class="muted" style="font-size:12px;margin-top:8px">可比性六维：<b>价格 · MOQ · 含税 · 运费 · 阶梯价 · 匹配层级</b>。`
-          + `仅「完全同款」行可硬比价（绿色底 = 当前最低同款）；等效替代 / 未核验 / 已排除仅供参考，不进入比价结论。</p>`;
+    html += '</tbody></table>';
+    html += `<p class="muted" style="font-size:12px;margin-top:10px">可比性八维：<b>价格 · MOQ · 含税 · 运费 · 现货 · 发货时效 · 阶梯价 · 匹配层级</b>。`
+          + `仅「完全同款」行可硬比价（橙色底 = 当前最低同款）；等效替代 / 未核验 / 已排除仅供参考，不进入比价结论。</p>`;
   }
-  html += `<h3>建议</h3><p>${r.recommendation||''}</p>`;
-  if (r.negotiation_script) html += `<h3>议价话术</h3><pre>${r.negotiation_script}</pre>`;
+  html += `<div class="cmp-summary" style="margin-top:16px"><div class="trace-label" style="color:var(--accent-deep)">建议</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.recommendation||''}</p></div>`;
+  if (r.negotiation_script) html += `<div style="margin-top:12px"><div class="trace-label" style="color:var(--accent-deep)">议价话术</div><pre style="margin-top:6px">${r.negotiation_script}</pre></div>`;
   document.getElementById('result').innerHTML = html;
+  updatePipeline();
 }
 
-// ---- 询价工作台 ----
+// ================= 询价工作台 =================
 const STATUS_CN = {pending:'未询价', draft:'话术已备', sent:'已发送', replied:'已回复', quoted:'已报价', closed:'已关闭'};
 
 async function refreshInquiries() {
-  if (!currentTargetId) { document.getElementById('workbench').innerHTML = '<p class="muted">请先选择或创建一个目标款</p>'; return; }
+  const el = document.getElementById('workbench');
+  if (!currentTargetId) { el.innerHTML = '<p class="muted">请先选择或创建一个目标款</p>'; inquiries = []; updatePipeline(); return; }
   inquiries = await api(`/api/targets/${currentTargetId}/inquiries`);
+  if (!Array.isArray(inquiries)) inquiries = [];
   renderWorkbench();
+  updatePipeline();
 }
 function renderWorkbench() {
   const el = document.getElementById('workbench');
-  if (!inquiries.length) { el.innerHTML = '<p class="muted">暂无候选商品，请先在②区添加候选商品</p>'; return; }
-  let html = '<table><tr><th>店铺</th><th>商品</th><th>状态</th><th>话术/回复</th><th>操作</th></tr>';
+  if (!inquiries.length) { el.innerHTML = '<div class="empty">暂无候选商品。先在「02 候选商品」添加，或从 1688 书签导入。</div>'; return; }
+  let html = '<table><thead><tr><th>店铺</th><th>商品</th><th>状态</th><th>话术 / 回复</th><th>操作</th></tr></thead><tbody>';
   for (const q of inquiries) {
     const st = STATUS_CN[q.status] || q.status;
     let cell = '';
     let actions = '';
     if (q.status === 'pending') {
       cell = '<span class="muted">—</span>';
-      actions = `<button class="small" onclick="makeInquiry('${q.product_id}')">生成话术</button>`;
+      actions = `<button class="btn default sm" onclick="makeInquiry('${q.product_id}')">生成话术</button>`;
     } else {
-      cell = `<pre style="margin:0">${q.script||''}</pre>`;
+      cell = `<pre>${escapeHtml(q.script||'')}</pre>`;
       if (q.status === 'draft') {
-        actions = `<button class="small" onclick="copyScript('${q.id}')">复制</button>
-                   <button class="small ghost" onclick="setStatus('${q.id}','sent')">标记已发送</button>`;
+        actions = `<button class="btn default sm" onclick="copyScript('${q.id}')">复制</button>
+                   <button class="btn ghost sm" onclick="setStatus('${q.id}','sent')">标记已发送</button>`;
       } else if (q.status === 'sent') {
-        actions = `<button class="small ghost" onclick="replyBox('${q.id}')">贴入回复</button>
-                   <button class="small" onclick="setStatus('${q.id}','closed')">关闭</button>`;
+        actions = `<button class="btn default sm" onclick="replyBox('${q.id}')">贴入回复</button>
+                   <button class="btn default sm" onclick="setStatus('${q.id}','closed')">关闭</button>`;
       } else if (q.status === 'replied' || q.status === 'quoted' || q.status === 'closed') {
-        actions = '<span class="muted">完成</span>';
+        actions = '<span class="muted">已完成</span>';
       }
     }
-    html += `<tr><td>${q.shop_name||''}</td><td>${q.title||''}</td>`
+    html += `<tr><td>${escapeHtml(q.shop_name||'')}</td><td>${escapeHtml(q.title||'')}</td>`
           + `<td><span class="status ${q.status}">${st}</span></td>`
-          + `<td>${cell}</td><td>${actions}</td></tr>`;
+          + `<td>${cell}</td><td style="white-space:nowrap">${actions}</td></tr>`;
   }
-  html += '</table>';
+  html += '</tbody></table>';
   el.innerHTML = html;
 }
 
@@ -798,18 +1451,20 @@ async function replyBox(id) {
   if (!reply) return;
   const r = await api(`/api/inquiries/${id}/parse-reply`, {method:'POST', body: JSON.stringify({reply})});
   if (r.quote) {
-    alert(`已解析报价：${r.quote.price} 元 / MOQ ${r.quote.moq??'-'} / ${r.quote.tax==='included'?'含税':(r.quote.tax==='excluded'?'不含税':'含税未知')}`);
+    const tax = r.quote.tax === 'included' ? '含税' : (r.quote.tax === 'excluded' ? '不含税' : '含税未知');
+    const stock = (STOCK_CN[r.quote.stock_status] || '现货未知');
+    const lead = fmtLeadTime(r.quote.lead_time_hours);
+    alert(`已解析报价：${r.quote.price} 元 / MOQ ${r.quote.moq??'-'} / ${tax} / ${stock}${lead ? ' / ' + lead : ''}`);
   }
   refreshInquiries();
 }
 
-// ---- 导入书签相关 ----
-let importCurrentTargetId = null;
-
+// ================= 导入书签相关 =================
 async function refreshImportTargets(selectId) {
   const ts = await api('/api/targets');
+  if (!Array.isArray(ts)) return;
   const sel = document.getElementById('target-select-import');
-  sel.innerHTML = ts.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  sel.innerHTML = ts.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
   // 选中优先级：显式传入 > 当前目标款 > 第一个
   let defId = selectId || null;
   if (!defId) {
@@ -883,7 +1538,7 @@ function extractAttrs(card){
   var raw=(el?txt(el):txt(card)).replace(/\\s+/g,'');
   // 只在出现分隔符时取属性段
   var seg=raw.split(/[\\u00A5¥]/)[0];
-  if(seg.indexOf('｜')<0 && seg.indexOf('|')<0) return {};
+  if(seg.indexOf('｜')<0&&seg.indexOf('|')<0) return {};
   var parts=seg.split(/｜|\\|/).map(function(s){return s.trim();}).filter(function(s){return s && s.length<=12;});
   if(parts.length<2) return {};
   return {属性: parts.slice(0,4).join(' / ')};
@@ -992,35 +1647,28 @@ async function syncCurrentTarget(id) {
   } catch (e) {}
 }
 
-// Demo mode: pre-load a demo target with results
+// 演示模式：自动挑一个有图有商品的目标款并跑匹配
 async function showDemo() {
   const targets = await api('/api/targets');
-  console.log('showDemo: found', targets.length, 'targets');
-  
-  // 优先找有图片且有商品的目标款
+  if (!Array.isArray(targets)) { alert('读取目标款失败，请确认服务正在运行'); return; }
   let demo = null;
   for (const t of targets) {
     if (t.image_paths && t.image_paths.length > 0) {
-      // 检查这个目标款下是否有商品
       const prods = await api(`/api/targets/${t.id}/products`);
-      if (prods && prods.length > 0) {
-        demo = t;
-        break;
-      }
+      if (prods && prods.length > 0) { demo = t; break; }
     }
   }
   if (!demo) {
-    alert('❌ 未找到带图片和商品的目标款。\n\n请先创建一个带图片的目标款并导入一些候选商品。');
+    alert('未找到带图片和商品的目标款。\n\n请先创建一个带图片的目标款并导入一些候选商品。');
     return;
   }
+  showTab('home');
   currentTargetId = demo.id;
   selectTarget(demo.id);
-  console.log('showDemo: selected target', demo.name, 'id=', demo.id, 'with', (await api(`/api/targets/${demo.id}/products`)).length, 'products');
   runMatch();
-  alert('✅ 演示模式：已加载《' + demo.name + '》及匹配结果\n\n你可以在此基础上继续添加更多候选商品。');
 }
 
-// Init
+// ================= 初始化 =================
 refreshTargets();
 loadShops();
 refreshInquiries();

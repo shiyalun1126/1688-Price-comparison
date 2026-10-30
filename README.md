@@ -58,7 +58,7 @@ data/            SQLite 库、上传图、测试图
 ```bash
 pip install -e ".[dev]"
 cp .env.example .env   # 填入 DEEPSEEK_API_KEY（不配则走规则兜底）
-python -m app.main
+python -m app
 ```
 
 打开 http://127.0.0.1:8000

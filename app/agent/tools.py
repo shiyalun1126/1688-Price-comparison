@@ -1,6 +1,7 @@
 """把比价业务能力包装成 Agent 可调用的工具集。"""
 from __future__ import annotations
 
+import json
 import re
 from urllib.parse import quote
 
@@ -9,6 +10,7 @@ import httpx
 from app.agent.react import ToolSpec
 from app.comparison.comparison import run_comparison
 from app.inquire.inquiry import build_inquiry_script
+from app.llm.client import LLMClient
 from app.matcher.matcher import Matcher
 from app.models.entities import Product, Shop, TargetStyle
 from app.models.enums import MatchStatus
@@ -254,7 +256,101 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                       "无图的（链接导入）需要用户用书签脚本重新导入以补全图片，否则只能按属性/价格粗筛。",
         }
 
+    def plan_search(target_id: str = "", focus: str = "") -> dict:
+        """用 LLM 分析目标款，生成多条高质量搜索关键词策略。
+
+        1688 反爬严格，服务端无法直接搜索；本工具负责「智能决策搜什么」，
+        返回可直接点击的搜索链接，由用户在浏览器执行（人在环）。
+        """
+        t = _current_target() if not target_id else store.get_target_style(target_id)
+        if not t:
+            return {"error": "缺少目标款（请先选定目标款）"}
+
+        attr_desc = "、".join(f"{k}:{v}" for k, v in (t.attributes or {}).items() if v) or "无"
+        prompt = (
+            f"目标款：{t.name}\n"
+            f"品类：{t.category or '未知'}\n"
+            f"描述：{t.description or '无'}\n"
+            f"属性：{attr_desc}\n"
+            f"参考价：{t.reference_price or '无'}\n"
+        )
+        if focus:
+            prompt += f"用户额外关注：{focus}\n"
+
+        queries: list[dict] = []
+        llm = LLMClient()
+        if llm.available:
+            try:
+                raw = llm.chat([
+                    {"role": "system", "content": (
+                        "你是 1688 采购搜索专家。根据商品信息，生成 3-4 条用于在 1688 搜索"
+                        "「同款/同款货源」的搜索关键词。要求：\n"
+                        "- 每条 4-12 个字，贴近 1688 卖家常用标题写法\n"
+                        "- 覆盖不同角度：精准款式、品类通用、材质工艺、批发场景\n"
+                        "- 不要包含品牌名（除非用户明确要求）\n"
+                        "输出 JSON 数组，每项 {\"kw\":\"关键词\",\"why\":\"一句话理由\"}，只输出 JSON。"
+                    )},
+                    {"role": "user", "content": prompt},
+                ], temperature=0.4, max_tokens=600)
+                txt = raw.strip()
+                if txt.startswith("```"):
+                    txt = txt.split("```")[1]
+                    if txt.lstrip().startswith("json"):
+                        txt = txt.lstrip()[4:]
+                parsed = json.loads(txt.strip())
+                if isinstance(parsed, list):
+                    for item in parsed[:4]:
+                        if isinstance(item, dict) and item.get("kw"):
+                            queries.append({
+                                "kw": str(item["kw"]).strip()[:20],
+                                "why": str(item.get("why", "")).strip()[:60],
+                            })
+            except Exception:
+                pass
+
+        # LLM 不可用或失败 → 规则兜底：名称 + 属性组合
+        if not queries:
+            base = re.sub(r"[\s_\-—]+", " ", t.name).strip()
+            queries.append({"kw": base[:20], "why": "目标款原名，最直接的搜索词"})
+            vals = [v for v in (t.attributes or {}).values() if v and len(v) <= 10][:2]
+            if vals:
+                queries.append({"kw": f"{vals[0]} {vals[-1]}".strip()[:20],
+                                "why": "用材质/工艺属性搜索，可发现更多同款货源"})
+            if t.category:
+                queries.append({"kw": f"{t.category} 批发", "why": "品类通用词，覆盖批发场景"})
+
+        for q in queries:
+            q["url"] = ("https://s.1688.com/selloffer/offer_search.htm?keywords="
+                        + quote(q["kw"]))
+
+        return {
+            "目标款": t.name,
+            "搜索策略": queries,
+            "执行方式": (
+                "这些链接需要用户在浏览器中逐个打开搜索，然后在 1688 页面点"
+                "「📥 导入1688商品」书签批量导入候选商品，导入后回来继续分析。"
+            ),
+            "注意": "1688 有严格反爬，服务端无法自动检索，因此采用人在环模式。",
+        }
+
     tools = [
+        ToolSpec(
+            name="plan_search",
+            description=(
+                "当目标款下候选商品太少（少于5个）或为空时调用。"
+                "智能分析目标款，生成多条 1688 搜索关键词和可直接点击的搜索链接。"
+                "调用后把链接和建议展示给用户，请用户去 1688 搜索并用书签导入候选商品。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "target_id": {"type": "string", "description": "目标款 ID（缺省用当前选中的）"},
+                    "focus": {"type": "string", "description": "用户额外关注点（可选），如某个材质/风格"},
+                },
+                "required": [],
+            },
+            func=plan_search,
+        ),
         ToolSpec(
             name="make_search_link",
             description=(

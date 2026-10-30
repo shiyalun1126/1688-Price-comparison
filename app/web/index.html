@@ -64,10 +64,10 @@
   /* 智能体推理轨迹 */
   .trace-step { border-left:3px solid var(--accent); background:#f8fafc; border-radius:0 8px 8px 0; padding:10px 14px; margin-bottom:10px; }
   .trace-step .rnd { font-size:11px; color:var(--accent); font-weight:700; }
-  .trace-thought { color:#334155; margin:6px 0; font-size:13px; white-space:pre-wrap; }
+  .trace-thought { color:#334155; margin:6px 0; font-size:13px; line-height:1.6; }
   .trace-tool { display:inline-block; background:#eef2ff; color:#3730a3; border-radius:6px; padding:3px 10px; font-size:12px; font-family:ui-monospace,monospace; margin:4px 0; }
   .trace-obs { background:#fff; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:11px; font-family:ui-monospace,monospace; color:#475569; max-height:150px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin-top:6px; }
-  .agent-final { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:14px 18px; margin-top:12px; white-space:pre-wrap; line-height:1.7; }
+  .agent-final { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:14px 18px; margin-top:12px; line-height:1.7; }
   .tutorial-box { background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:16px 20px; margin-bottom:20px; }
   .tutorial-box h3 { margin:0 0 12px; font-size:16px; }
   .tutorial-steps { margin:0; padding-left:20px; line-height:1.8; }
@@ -548,7 +548,7 @@ async function runAgent() {
     html += `<div class="trace-step">
       <div class="rnd">第 ${s.round} 轮</div>`;
     if (s.thought) {
-      html += `<div class="trace-thought">💭 ${escapeHtml(s.thought)}</div>`;
+      html += `<div class="trace-thought">💭 ${renderMarkdown(s.thought)}</div>`;
     }
     if (s.tool) {
       const cn = TOOL_CN[s.tool] || s.tool;
@@ -562,7 +562,7 @@ async function runAgent() {
     html += `</div>`;
   }
   if (r.final_answer) {
-    html += `<div class="agent-final"><b>🎯 结论</b>\n\n${escapeHtml(r.final_answer)}</div>`;
+    html += `<div class="agent-final"><b>🎯 结论</b><div style="margin-top:8px">${renderMarkdown(r.final_answer)}</div></div>`;
   }
   if (r.usage) {
     const u = r.usage;
@@ -581,6 +581,57 @@ async function runAgent() {
 function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 轻量 Markdown 渲染：先转义（防 XSS），再还原受支持的语法
+function renderMarkdown(text) {
+  if (!text) return '';
+  let s = escapeHtml(text);
+
+  // 代码块 ```...```
+  s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (m, code) =>
+    `<pre style="background:#f1f5f9;padding:8px;border-radius:6px;overflow:auto;font-size:12px">${code}</pre>`);
+
+  // 行内代码 `xxx`
+  s = s.replace(/`([^`\n]+)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">$1</code>');
+
+  // 链接 [文字](url) —— 只允许 http(s)，且新窗口打开
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (m, label, url) =>
+      `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${label}</a>`);
+
+  // 裸链接
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+    (m, pre, url) =>
+      `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${url}</a>`);
+
+  // 粗体 **xxx**
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+
+  // 表格：| a | b | 形式
+  s = s.replace(/(?:^\|.*\|\s*$\n?)+/gm, block => {
+    const lines = block.trim().split('\n').map(l => l.trim());
+    if (lines.length < 2) return block;
+    const cells = l => l.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const head = cells(lines[0]);
+    // 第二行是分隔线 |---|---|
+    const isSep = /^\|?[\s:-]+\|/.test(lines[1]);
+    const body = lines.slice(isSep ? 2 : 1);
+    let t = '<table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">';
+    t += '<tr>' + head.map(h => `<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)">${h}</th>`).join('') + '</tr>';
+    for (const row of body) {
+      t += '<tr>' + cells(row).map(c => `<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">${c}</td>`).join('') + '</tr>';
+    }
+    t += '</table>';
+    return t;
+  });
+
+  // 标题 ###
+  s = s.replace(/^#{1,6}\s+(.+)$/gm, '<div style="font-weight:700;margin:10px 0 4px">$1</div>');
+
+  // 换行
+  s = s.replace(/\n/g, '<br>');
+  return s;
 }
 
 // 导出比价表为 CSV（Excel 可直接打开，UTF-8 BOM 防乱码）

@@ -28,7 +28,7 @@ class TargetStyle(BaseModel):
     # 结构化属性（可后续用 LLM 从描述/图里抽取）
     attributes: dict[str, str] = Field(default_factory=dict)
     reference_price: Optional[float] = None   # 参考/预期价
-    category: Optional[str] = None            # 服装细分类目
+    category: Optional[str] = None            # 细分类目（服装/数码/鞋包等）
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 

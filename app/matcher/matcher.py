@@ -1,8 +1,8 @@
 """匹配引擎：双通道（图相似召回 + 属性核验）→ 分层判定。
 
-设计要点（源自服装场景约束）：
+设计要点（全品类通用，源自服装场景约束并已泛化）：
 - 图像相似仅是召回信号，同图 ≠ 同款。
-- 属性核验是判定「同版货」的关键（面料/克重/版型/尺码）。
+- 属性核验是判定「同版货」的关键（品类相关属性：面料/克重/版型、型号/代际等）。
 - 分层：完全同款（verified_same）进 exact 列表；
   等效替代（verified_equivalent）进 equivalent 列表，并显式声明。
 - 未核验的候选保持 candidate，不进入任何「同款」列表。
@@ -78,7 +78,9 @@ class Matcher:
     def _rules_verifier(target: TargetStyle, product: Product) -> tuple[bool, float, str]:
         """默认规则核验器：属性完全命中才判同版货（保守，适合无 LLM 阶段）。
 
-        更智能的核验应替换为 LLM（对比面料/克重/版型等语义）。
+        属性维度随品类而变（服装：面料/克重/版型；数码：型号/代际/规格），
+        由目标款 attributes 驱动，核验器本身品类无关。
+        更智能的核验应替换为 LLM（对比品类关键属性的语义）。
         """
         if not target.attributes:
             # 无结构化属性时，无法凭规则核验，标记为等效替代候选
@@ -112,7 +114,7 @@ class Matcher:
                     "图片文件缺失，无法视觉比对（请重新上传图片）",
                 )
             try:
-                r = compare_images(t_img, p_img)
+                r = compare_images(t_img, p_img, category=target.category)
                 tier = r.get("tier", "different")
                 conf = float(r.get("confidence", 0.5))
                 reason = r.get("reason", "")

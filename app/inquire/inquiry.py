@@ -25,7 +25,8 @@ def build_inquiry_script(
             return llm.chat([
                 {"role": "system", "content": (
                     "你是采购询价助手。生成一条发给 1688 卖家的询价消息："
-                    "口语、自然、像真人，问价格、起订量、含税/运费，"
+                    "口语、自然、像真人，必问：价格、起订量、含税/运费、"
+                    "**是否有现货、多久能发货**（履约信息是比价关键），"
                     "并顺带核验目标款的关键属性是否与候选商品一致（属性随品类而变，"
                     "如服装问面料/克重/版型，数码问型号/代际/规格，按给定属性提问）。"
                     "只输出消息正文，不要多余说明。"
@@ -44,8 +45,9 @@ def build_inquiry_script(
     if buyer_quantity:
         parts.append(f"我这边大概要 {buyer_quantity} 件。")
     parts.append("麻烦问下：单价多少？起订量多少？含税吗？包运费吗？")
+    parts.append("另外有现货吗？多久能发货？")
     if target.attributes:
-        parts.append(f"另外确认下规格：{', '.join(f'{k}是不是{v}' for k, v in target.attributes.items())}？")
+        parts.append(f"确认下规格：{', '.join(f'{k}是不是{v}' for k, v in target.attributes.items())}？")
     return "".join(parts)
 
 

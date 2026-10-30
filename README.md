@@ -81,6 +81,26 @@ python -m app
 | POST | `/api/targets/{id}/comparison` | 生成比价结论 |
 | POST | `/api/agent/run` | ReAct 智能体执行任务 |
 
+## 测试
+
+```bash
+pip install -e ".[dev]"
+py -3.12 -m pytest                # 全量（含慢测试，约 2 分钟，需 DEEPSEEK_API_KEY）
+py -3.12 -m pytest -m "not slow"  # 快测（单测 + 冒烟，约 2 秒，无网络）
+```
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `tests/test_unit.py` | 比价合并（多报价最新生效，回归 bug）、匹配分层、报价正则兜底、视觉提示词品类自适应 |
+| `tests/test_api_smoke.py` | 看板全部端点、目标款增删闭环 |
+| `tests/test_inquiry_e2e.py` | 询价闭环：话术 → 解析报价 → 比价纳入 |
+| `tests/test_agent_e2e.py` | 智能体自主决策：工具调用轨迹 + 结论具体性 |
+| `tests/test_vision_retest.py` | 视觉判定稳定性（服装/数码双品类）+ 跨品类负对照 |
+
+测试跑在真实库的临时副本上（`tests/conftest.py` 自动隔离），不会改动 `data/app.db`。
+视觉模型对个别边界商品有判定抖动，稳定性断言容忍至多 1 个「同款→不同」翻转、一致率 ≥70%，
+用于拦截系统性回归而非要求逐位一致。
+
 ## 当前进度
 
 全链路已通并在真实数据上验证：目标款 → 书签导入 → 视觉匹配 → 分层 → 询价 → 比价 → 智能体。

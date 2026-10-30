@@ -46,6 +46,13 @@ _CATEGORY_HINTS: list[tuple[tuple[str, ...], str]] = [
 ]
 _DEFAULT_HINT = "通用维度：商品品类与整体形态、外观结构、颜色配色、图案/印花、品牌标识、规格档位、配件组成。"
 
+# 二次复核指令：换独立视角重新判定，避免受「已有一个结论」的锚定影响
+_RECHECK_INSTRUCTION = (
+    "【复核判定】这是对同款判定的独立复核。请抛开任何先前结论，"
+    "逐项核对：①是否同一品类同一形态；②外观结构是否一致；③颜色配色是否一致；"
+    "④有无明确可见的矛盾证据。核对完成后再给出判定，不要猜测倾向。"
+)
+
 _CORE_SYSTEM = """你是货源比对专家。给定两张同平台商品图，判断它们是否是「同一款货」。
 注意：同一款货在不同店铺可能用不同拍摄方式（模特/挂拍/平铺/场景）、不同背景、不同水印、不同角度和光线，或一张是供货示意图/多型号合集图。
 
@@ -83,6 +90,32 @@ def build_system_prompt(category: Optional[str] = None) -> str:
 # 传给视觉模型前的最长边与 JPEG 质量（1688 原图常为 800~1500px、1MB+）
 _MAX_SIDE = 768
 _JPEG_QUALITY = 85
+
+# 低置信度灰区：判定落在此区间时做二次复核（temperature=0.1 下边界商品仍有抖动，
+# 首判置信度低说明模型自己也不确定，换视角重判一次可显著收敛）
+RECHECK_LOW = 0.45
+RECHECK_HIGH = 0.75
+
+
+def merge_recheck(first: dict, second: dict) -> dict:
+    """合并首判与复核结果（纯函数，便于单测）。
+
+    tier 一致 → 取置信度高者的理由，置信度取两者较大值，并标注已复核；
+    tier 不一致 → 取置信度高者，理由中显式标注分歧（下游可据此人工复核）。
+    """
+    c1 = float(first.get("confidence", 0.5) or 0)
+    c2 = float(second.get("confidence", 0.5) or 0)
+    out = dict(first if c1 >= c2 else second)
+    if first.get("tier") == second.get("tier"):
+        out["confidence"] = max(c1, c2)
+        out["reason"] = f"{out.get('reason', '')}（已二次复核）"
+    else:
+        out["reason"] = (
+            f"{out.get('reason', '')}"
+            f"（二次复核结论不一致：{first.get('tier')}/{second.get('tier')}，"
+            f"取置信度高者，建议人工复核）"
+        )
+    return out
 
 
 def _prepare_b64(path: str) -> str:
@@ -150,11 +183,14 @@ def compare_images(
     model: Optional[str] = None,
     timeout: float = 120.0,
     retries: int = 2,
+    recheck: bool = False,
 ) -> dict:
     """比对两张图，返回 {same, confidence, tier, reason, key_diff}。
 
     category：目标款品类（如「蓝牙耳机」「POLO衫」），用于注入品类比对维度；
     为空时用通用维度。
+    recheck：复核模式，换一套独立视角的问法再判定一次（用于低置信度二次复核，
+    与首次判定交叉验证，收敛边界案例的抖动）。
 
     内置重试：视觉模型对大 b64 负载偶发返回空/截断内容。
     """
@@ -163,16 +199,20 @@ def compare_images(
     if not api_key:
         raise RuntimeError("DEEPSEEK_API_KEY 未配置")
 
+    user_blocks = [
+        {"type": "text", "text": "图A（目标款）："},
+        {"type": "image_url", "image_url": {"url": _data_url(img_a)}},
+        {"type": "text", "text": "图B（候选款）："},
+        {"type": "image_url", "image_url": {"url": _data_url(img_b)}},
+    ]
+    if recheck:
+        user_blocks.insert(0, {"type": "text", "text": _RECHECK_INSTRUCTION})
+
     payload = {
         "model": model or VISION_MODEL,
         "messages": [
             {"role": "system", "content": build_system_prompt(category)},
-            {"role": "user", "content": [
-                {"type": "text", "text": "图A（目标款）："},
-                {"type": "image_url", "image_url": {"url": _data_url(img_a)}},
-                {"type": "text", "text": "图B（候选款）："},
-                {"type": "image_url", "image_url": {"url": _data_url(img_b)}},
-            ]},
+            {"role": "user", "content": user_blocks},
         ],
         "temperature": 0.1,
         "max_tokens": 3000,  # deepseek-flash 会先推理，需留足预算

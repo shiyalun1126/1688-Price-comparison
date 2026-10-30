@@ -85,8 +85,17 @@ CREATE TABLE IF NOT EXISTS comparison (
     rows TEXT NOT NULL DEFAULT '[]',
     recommendation TEXT NOT NULL DEFAULT '',
     negotiation_script TEXT NOT NULL DEFAULT '',
-    summary TEXT NOT NULL DEFAULT ''
+    summary TEXT NOT NULL DEFAULT '',
+    fingerprint TEXT NOT NULL DEFAULT ''
 );
+
+-- 高频查询路径索引（幂等，旧库初始化时同样生效）
+CREATE INDEX IF NOT EXISTS idx_product_target  ON product(target_style_id);
+CREATE INDEX IF NOT EXISTS idx_product_shop    ON product(shop_id);
+CREATE INDEX IF NOT EXISTS idx_inquiry_target  ON inquiry(target_style_id);
+CREATE INDEX IF NOT EXISTS idx_inquiry_product ON inquiry(target_style_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_quote_target    ON quote(target_style_id);
+CREATE INDEX IF NOT EXISTS idx_quote_product   ON quote(product_id);
 """
 
 
@@ -121,6 +130,9 @@ class Store:
             self._conn.execute("ALTER TABLE product ADD COLUMN match_reason TEXT NOT NULL DEFAULT ''")
         if "matched_at" not in cols:
             self._conn.execute("ALTER TABLE product ADD COLUMN matched_at TEXT")
+        ccols = {r["name"] for r in self._conn.execute("PRAGMA table_info(comparison)")}
+        if "fingerprint" not in ccols:
+            self._conn.execute("ALTER TABLE comparison ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
 
     def close(self) -> None:
         self._conn.close()
@@ -337,10 +349,10 @@ class Store:
         self._conn.execute(
             """INSERT OR REPLACE INTO comparison
                (target_style_id, generated_at, rows, recommendation,
-                negotiation_script, summary)
-               VALUES (?,?,?,?,?,?)""",
+                negotiation_script, summary, fingerprint)
+               VALUES (?,?,?,?,?,?,?)""",
             (c.target_style_id, _iso(c.generated_at), json.dumps(c.rows),
-             c.recommendation, c.negotiation_script, c.summary),
+             c.recommendation, c.negotiation_script, c.summary, c.fingerprint),
         )
         self._conn.commit()
 
@@ -356,4 +368,5 @@ class Store:
             generated_at=datetime.fromisoformat(row["generated_at"]),
             rows=_loads(row["rows"], []), recommendation=row["recommendation"],
             negotiation_script=row["negotiation_script"], summary=row["summary"],
+            fingerprint=(row["fingerprint"] or "") if "fingerprint" in row.keys() else "",
         )

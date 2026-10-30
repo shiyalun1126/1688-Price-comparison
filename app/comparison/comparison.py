@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Optional
 
 from app.llm.client import LLMClient
@@ -201,11 +203,62 @@ def build_comparison(
     return result
 
 
-def run_comparison(store: Store, target: TargetStyle, llm: Optional[LLMClient] = None) -> ComparisonResult:
-    """从 store 拉商品标价 + 询价报价 + 店铺，生成比价结论并落库。"""
+def _fingerprint(
+    target: TargetStyle,
+    products: dict[str, Product],
+    quotes: list[Quote],
+    shops: dict[str, Shop],
+) -> str:
+    """比价输入数据指纹：影响比价结论的任一字段变化则指纹变化。
+
+    覆盖：目标款参考价、商品（标价/MOQ/匹配状态）、报价（全字段）、店铺名。
+    不含无关字段（图片路径、URL、时间戳等），避免无意义的缓存失效。
+    """
+    payload = {
+        "ref": target.reference_price,
+        "products": sorted(
+            (
+                p.id, p.listed_price, p.moq,
+                p.match_status.value, p.match_tier.value if p.match_tier else None,
+            )
+            for p in products.values()
+        ),
+        "quotes": sorted(
+            (
+                q.id, q.price, q.moq, q.tax.value, q.includes_shipping,
+                json.dumps(q.tiers, ensure_ascii=False, sort_keys=True),
+                q.condition_note, q.quoted_at.isoformat(),
+            )
+            for q in quotes
+        ),
+        "shops": sorted((s.id, s.name) for s in shops.values()),
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def run_comparison(
+    store: Store,
+    target: TargetStyle,
+    llm: Optional[LLMClient] = None,
+    force_refresh: bool = False,
+) -> ComparisonResult:
+    """从 store 拉商品标价 + 询价报价 + 店铺，生成比价结论并落库。
+
+    带数据指纹缓存：输入数据未变化时直接复用上次结论（省 LLM 调用与等待），
+    force_refresh=True 时跳过缓存强制重算。
+    """
     quotes = store.list_quotes(target.id)
     shops = {s.id: s for s in store.list_shops()}
     products = {p.id: p for p in store.list_products(target.id)}
+
+    fp = _fingerprint(target, products, quotes, shops)
+    if not force_refresh:
+        cached = store.get_comparison(target.id)
+        if cached and cached.fingerprint == fp:
+            return cached
+
     result = build_comparison(target, quotes, shops, products, llm)
+    result.fingerprint = fp
     store.save_comparison(result)
     return result

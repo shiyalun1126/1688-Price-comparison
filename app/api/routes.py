@@ -571,12 +571,13 @@ def list_quotes(request: Request, target_id: str):
 
 
 @router.post("/targets/{target_id}/comparison")
-def comparison(request: Request, target_id: str):
+def comparison(request: Request, target_id: str, refresh: bool = False):
     store = _store(request)
     target = store.get_target_style(target_id)
     if not target:
         return {"error": "目标款不存在"}
-    result = run_comparison(store, target)
+    # 数据未变化时直接复用上次结论；?refresh=true 强制重算（含 LLM 话术）
+    result = run_comparison(store, target, force_refresh=refresh)
     return result.model_dump()
 
 

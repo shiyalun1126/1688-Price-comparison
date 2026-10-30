@@ -16,7 +16,7 @@ from typing import Callable, Optional
 from app.models.entities import Product, TargetStyle
 from app.models.enums import MatchStatus, MatchTier
 from app.matcher.image import image_similarity
-from app.matcher.vision import compare_images
+from app.matcher.vision import RECHECK_HIGH, RECHECK_LOW, compare_images, merge_recheck
 
 # 属性核验器签名：返回 (是否同版货, 置信度 0~1, 核验依据文案)
 AttributeVerifier = Callable[[TargetStyle, Product], tuple[bool, float, str]]
@@ -70,9 +70,15 @@ class Matcher:
     属性核验作为兜底。pHash 已证实对服装场景区分度不足，仅保留召回/参考用。
     """
 
-    def __init__(self, verifier: Optional[AttributeVerifier] = None, use_vision: bool = True):
+    def __init__(
+        self,
+        verifier: Optional[AttributeVerifier] = None,
+        use_vision: bool = True,
+        recheck_gray: bool = True,
+    ):
         self._verifier = verifier or self._rules_verifier
         self._use_vision = use_vision
+        self._recheck_gray = recheck_gray   # 低置信度时二次复核（多一次 LLM 调用，仅灰区商品触发）
 
     @staticmethod
     def _rules_verifier(target: TargetStyle, product: Product) -> tuple[bool, float, str]:
@@ -115,6 +121,15 @@ class Matcher:
                 )
             try:
                 r = compare_images(t_img, p_img, category=target.category)
+                conf = float(r.get("confidence", 0.5) or 0)
+                # 低置信度灰区 → 换独立视角二次复核，收敛边界案例抖动；
+                # 复核本身失败不影响首判结果
+                if self._recheck_gray and RECHECK_LOW <= conf <= RECHECK_HIGH:
+                    try:
+                        r2 = compare_images(t_img, p_img, category=target.category, recheck=True)
+                        r = merge_recheck(r, r2)
+                    except Exception:
+                        pass
                 tier = r.get("tier", "different")
                 conf = float(r.get("confidence", 0.5))
                 reason = r.get("reason", "")

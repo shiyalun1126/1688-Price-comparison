@@ -121,3 +121,4 @@ class ComparisonResult(BaseModel):
     recommendation: str = ""                          # 采购建议
     negotiation_script: str = ""                      # 议价话术
     summary: str = ""                                 # 综述
+    fingerprint: str = ""                             # 输入数据指纹（缓存命中判断）

@@ -2,61 +2,155 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>1688 候选导入 · 书签脚本</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导入书签 · 问渠 1688 比价智能体</title>
 <style>
-  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 860px; margin: 32px auto; padding: 0 20px; color:#1f2937; line-height:1.7; }
-  h1 { font-size: 20px; }
-  h2 { font-size: 15px; margin-top: 26px; }
-  .bookmarklet { display:inline-block; background:#2563eb; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:600; box-shadow:0 2px 6px rgba(37,99,235,.35); }
-  .bookmarklet:active { transform: translateY(1px); }
-  .box { background:#f8fafc; border:1px solid #e3e5e8; border-radius:8px; padding:14px 18px; margin:14px 0; }
-  code { background:#eef2ff; padding:1px 6px; border-radius:4px; font-size:13px; }
-  .step { margin: 10px 0; }
-  .muted { color:#6b7280; font-size:13px; }
-  .warn { background:#fef3c7; border-color:#fde68a; }
-  select, input { padding:7px 10px; border:1px solid #e3e5e8; border-radius:6px; font-size:14px; }
-  textarea { width:100%; padding:8px 10px; border:1px solid #e3e5e8; border-radius:6px; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+:root {
+  --paper:        oklch(97.8% 0.009 85);
+  --surface:      oklch(99.3% 0.005 85);
+  --surface-2:    oklch(96.3% 0.012 85);
+  --ink:          oklch(26% 0.018 60);
+  --ink-2:        oklch(42% 0.016 65);
+  --muted:        oklch(50% 0.014 70);
+  --faint:        oklch(64% 0.012 75);
+  --border:       oklch(90.5% 0.013 80);
+  --border-strong:oklch(84% 0.016 78);
+  --accent:       oklch(56% 0.17 42);
+  --accent-deep:  oklch(48% 0.15 40);
+  --accent-soft:  oklch(94.5% 0.04 72);
+  --ochre-soft:   oklch(94% 0.045 80);
+  --ochre-deep:   oklch(50% 0.10 62);
+  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, "Times New Roman", serif;
+  --font-mono:  "IBM Plex Mono", "SF Mono", ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-font-smoothing: antialiased; }
+body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.6; background: var(--paper); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.top { border-bottom: 1px solid var(--border); background: var(--surface); }
+.top-in { max-width: 780px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-deep); color: oklch(98% 0.01 85); font-family: var(--font-serif); font-weight: 700; font-size: 16px; display: grid; place-items: center; flex: none; }
+.brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
+.brand-sub { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.back { margin-left: auto; font-size: 12px; color: var(--accent-deep); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 8px; transition: background .15s ease-out; }
+.back:hover { background: var(--accent-soft); }
+
+.page { max-width: 780px; margin: 0 auto; padding: 36px 24px 64px; }
+.page-head h1 { font-family: var(--font-serif); font-size: 26px; font-weight: 700; margin: 0 0 8px; }
+.page-head p { font-size: 13px; color: var(--muted); margin: 0; max-width: 60ch; }
+
+.guide { margin-top: 28px; }
+.guide-step { display: grid; grid-template-columns: 56px 1fr; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--border); }
+.guide-step:last-child { border-bottom: 0; }
+.guide-num { font-family: var(--font-serif); font-size: 30px; font-weight: 700; color: var(--accent-deep); line-height: 1; }
+.guide-step h2 { font-size: 14px; font-weight: 700; margin: 2px 0 10px; }
+.guide-step p { font-size: 13px; color: var(--ink-2); margin: 6px 0; line-height: 1.8; }
+.muted { color: var(--muted); font-size: 12px; }
+
+select, input, textarea {
+  width: 100%; padding: 8px 10px; font-family: var(--font-sans); font-size: 13px;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px;
+}
+select { max-width: 340px; }
+select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { margin-top: 8px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; resize: vertical; }
+code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+
+.bm-btn {
+  display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 6px;
+  background: var(--accent-deep); color: oklch(98% 0.01 85); text-decoration: none;
+  font-size: 13px; font-weight: 600; padding: 11px 20px; border-radius: 10px;
+  transition: background .15s ease-out;
+}
+.bm-btn:hover { background: color-mix(in oklch, var(--accent-deep) 88%, black); }
+.bm-btn:active { transform: translateY(1px); }
+
+.note { background: var(--ochre-soft); border: 1px solid color-mix(in oklch, var(--ochre-deep) 25%, var(--paper)); border-radius: 10px; padding: 14px 18px; margin-top: 24px; }
+.note h2 { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: var(--ochre-deep); }
+.note ul { margin: 0; padding-left: 18px; }
+.note li { font-size: 12px; color: var(--ink-2); line-height: 1.9; }
+
+@media (max-width: 640px) {
+  .guide-step { grid-template-columns: 1fr; gap: 6px; }
+  .guide-num { font-size: 24px; }
+}
 </style>
 </head>
 <body>
-<h1>1688 候选商品 · 一键导入书签</h1>
-<p class="muted">你在 1688 商品页点一下书签，系统自动抓取标题、主图、价格并入库，无需手动截图录入。</p>
 
-<div class="box">
-  <h2>第 0 步：选择要导入到哪个目标款</h2>
-  <select id="target-select"></select>
-  <p class="muted">书签脚本会读取这个选择，把商品导入到对应目标款下。</p>
-</div>
+<header class="top">
+  <div class="top-in">
+    <div class="brand-mark">渠</div>
+    <div>
+      <div class="brand-name">问渠</div>
+      <div class="brand-sub">1688 比价智能体</div>
+    </div>
+    <a class="back" href="/">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5 3.5 7l5 5.5"/></svg>
+      返回工作台
+    </a>
+  </div>
+</header>
 
-<div class="box">
-  <h2>第 1 步：把下面的按钮拖到浏览器书签栏</h2>
-  <p>
-    <a id="bookmarklet" class="bookmarklet" href="#" onclick="return false;">📥 导入到1688比价</a>
-  </p>
-  <p class="muted">拖动这个蓝色按钮到你的书签栏（若浏览器不允许拖拽，右键复制链接地址，手动新建书签并粘贴）。</p>
-</div>
+<main class="page">
+  <div class="page-head">
+    <h1>导入书签</h1>
+    <p>在 1688 商品页点一下书签，系统自动抓取标题、主图、价格并入库，无需手动截图录入。</p>
+  </div>
 
-<div class="box">
-  <h2>第 2 步：在 1688 商品页点击书签</h2>
-  <div class="step">① 打开任意一个 1688 商品详情页（<code>detail.1688.com/offer/xxx.html</code>）</div>
-  <div class="step">② 点击书签栏里的「📥 导入到1688比价」</div>
-  <div class="step">③ 看到提示「✅ 导入成功」即完成，回到本系统的管理页面刷新即可看到</div>
-</div>
+  <div class="guide">
+    <div class="guide-step">
+      <div class="guide-num">0</div>
+      <div>
+        <h2>选择要导入到哪个目标款</h2>
+        <select id="target-select"></select>
+        <p class="muted">书签脚本会读取这个选择，把商品导入到对应目标款下。</p>
+      </div>
+    </div>
 
-<div class="box warn">
-  <h2>注意事项</h2>
-  <ul class="muted" style="margin:0;padding-left:20px">
-    <li>本系统需在本机运行（<code>http://127.0.0.1:8000</code>），书签脚本会把数据提交到本机。</li>
-    <li>若点击后没反应，按 F12 打开控制台查看报错，常见原因是浏览器拦截了混合内容。</li>
-    <li>抓取的是页面上当前展示的标题/主图/价格，确保页面已完整加载。</li>
-  </ul>
-</div>
+    <div class="guide-step">
+      <div class="guide-num">1</div>
+      <div>
+        <h2>把书签拖到浏览器书签栏</h2>
+        <a id="bookmarklet" class="bm-btn" href="#" onclick="return false;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8m0 0L5 7m3 3 3-3M2.5 12.5h11"/></svg>
+          导入 1688 商品
+        </a>
+        <p class="muted">若浏览器不允许拖拽，右键「复制链接地址」，手动新建书签并粘贴。</p>
+      </div>
+    </div>
 
-<div class="box">
-  <h2>排查：书签脚本源码</h2>
-  <p class="muted">如需手动新建书签，把下面代码作为书签的 URL（名称随意）：</p>
-  <textarea id="bm-code" rows="10" readonly></textarea>
-</div>
+    <div class="guide-step">
+      <div class="guide-num">2</div>
+      <div>
+        <h2>在 1688 页面点击书签</h2>
+        <p><b>方式 A（批量，推荐）</b>：在搜索列表页 <code>s.1688.com/selloffer/…</code> 点书签 → 抓取全页商品 → 批量导入。</p>
+        <p><b>方式 B（单条）</b>：在商品详情页 <code>detail.1688.com/offer/…</code> 点书签 → 导入当前商品。</p>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="guide-num">…</div>
+      <div>
+        <h2>排查：书签源码</h2>
+        <p class="muted">如需手动新建书签，把下面代码作为书签的 URL（名称随意）：</p>
+        <textarea id="bm-code" rows="8" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <h2>注意事项</h2>
+    <ul>
+      <li>本系统需在本机运行（<code>http://127.0.0.1:8000</code>），书签脚本会把数据提交到本机。</li>
+      <li>若点击后没反应，按 F12 打开控制台查看报错，常见原因是浏览器拦截了混合内容。</li>
+      <li>抓取的是页面上当前展示的标题 / 主图 / 价格，确保页面已完整加载。</li>
+    </ul>
+  </div>
+</main>
 
 <script>
 const API_BASE = location.origin;   // 本系统的地址
@@ -89,7 +183,10 @@ var price = null;
 var pm = document.body.innerText.match(/([0-9]+(?:\\.[0-9]+)?)\\s*元/);
 if (pm) price = parseFloat(pm[1]);
 var offerId = (location.href.match(/offer\\/(\\d+)/)||[])[1] || '';
-var shopName = txt('.shop-name') || txt('.company-name') || (document.title.match(/^([^-|]+)/)||[])[1] || '1688店铺';
+var shopName = '';
+var um = location.href.match(/[?&]uid=([^&]+)/);
+if (um) shopName = decodeURIComponent(um[1]);   // 旺旺链接里的 uid 是真实卖家名
+if (!shopName) shopName = txt('.shop-name') || txt('.company-name') || (document.title.match(/^([^-|]+)/)||[])[1] || '1688店铺';
 fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
   target_style_id: TARGET, title: title, image_url: img, price: price,
   url: location.href, shop_name: shopName.trim()

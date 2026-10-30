@@ -57,7 +57,7 @@ if(PAGE_TYPE==='search'){
       var imgSrc=imgs[0].src,linkUrl=links[0].href;
       if(!imgSrc||!linkUrl){failed++;return;}
       var shopRow=$('.offer-shop-row',card)||$('.offer-shop-row');
-      var shopName=txt(shopRow)||'1688店铺';
+      var shopName='';var um=(linkUrl||'').match(/[?&]uid=([^&]+)/);if(um)shopName=decodeURIComponent(um[1]);if(!shopName)shopName=txt(shopRow)||'1688店铺';
       var title=extractTitle(txt(card))||'1688商品';
       var price=getPrice(txt(card));
       var payload={target_style_id:TARGET_ID,title:title,image_url:imgSrc,price:price,url:linkUrl,shop_name:shopName};
@@ -81,7 +81,7 @@ if(PAGE_TYPE==='search'){
   var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
   if(pm)price=parseFloat(pm[1]);
   var shopRow=$('.offer-shop-row')||$('.company-name')||$('.shop-name');
-  var shopName=txt(shopRow)||'1688店铺';
+  var shopName='';var um=location.href.match(/[?&]uid=([^&]+)/);if(um)shopName=decodeURIComponent(um[1]);if(!shopName)shopName=txt(shopRow)||'1688店铺';
   var offerId=(location.href.match(/offer\\/(\\d+)/)||[])[1]||'';
   var url='http://detail.1688.com/offer/'+offerId+'.html';
   fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({

@@ -308,10 +308,14 @@ def import_product(request: Request, body: ImportProduct):
     if not target:
         return {"ok": False, "error": "目标款不存在"}
 
-    # 门店：优先用传入 shop_id，否则按 shop_name 找或新建
+    # 门店：优先用传入 shop_id；店铺名优先取链接里的 uid 参数（旺旺链接中的真实卖家），
+    # 防止书签在聊天/搜索页把登录账号的公司名误当卖家
+    from urllib.parse import parse_qs, unquote, urlparse
+
     shop_id = body.shop_id
     if not shop_id:
-        name = (body.shop_name or "1688店铺").strip()
+        uid = (parse_qs(urlparse(body.url or "").query).get("uid") or [""])[0]
+        name = (unquote(uid).strip() if uid else "") or (body.shop_name or "1688店铺").strip()
         found = next((s for s in store.list_shops() if s.name == name), None)
         if found:
             shop_id = found.id

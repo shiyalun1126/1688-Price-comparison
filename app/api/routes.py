@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -589,10 +590,40 @@ class AgentRequest(BaseModel):
 
 @router.post("/agent/run")
 def agent_run(request: Request, body: AgentRequest):
-    """让智能体自主完成一次比价任务，返回结论 + 推理轨迹。"""
+    """让智能体自主完成一次比价任务，返回结论 + 推理轨迹 + token 用量。"""
     from app.agent.service import run_agent
 
     store = _store(request)
     if not body.goal.strip():
         return {"error": "goal 不能为空"}
     return run_agent(store, body.goal, body.target_id)
+
+
+@router.get("/agent/history")
+def agent_history(request: Request, target_id: str | None = None, limit: int = 20):
+    """智能体运行历史（前端刷新后据此恢复轨迹）。"""
+    store = _store(request)
+    runs = store.list_agent_runs(target_id, limit=min(limit, 50))
+    return [r.model_dump(mode="json") for r in runs]
+
+
+@router.delete("/agent/history")
+def agent_history_clear(request: Request, target_id: str | None = None):
+    """清空智能体运行历史（可按目标款）。"""
+    store = _store(request)
+    return {"cleared": store.clear_agent_runs(target_id)}
+
+
+@router.get("/usage")
+def usage_stats(request: Request):
+    """进程级 token 用量累计 + 按配置单价的成本折算。"""
+    from app.llm.usage import USAGE, cost_cny
+
+    snap = USAGE.snapshot()
+    return {
+        **snap,
+        "cost_cny": cost_cny(snap),
+        "price_configured": bool(
+            os.getenv("LLM_INPUT_PRICE_PER_M") or os.getenv("LLM_OUTPUT_PRICE_PER_M")
+        ),
+    }

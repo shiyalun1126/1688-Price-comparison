@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional
 import httpx
 
 import app.config  # noqa: F401  触发 .env 加载
+from app.llm.usage import USAGE, extract_usage
 
 
 @dataclass
@@ -97,7 +98,9 @@ class ReActAgent:
             timeout=120.0,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]
+        data = resp.json()
+        USAGE.add(*extract_usage(data))
+        return data["choices"][0]["message"]
 
     def run(self, goal: str, context: Optional[str] = None) -> AgentRun:
         """执行 Agent 循环。"""

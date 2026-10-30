@@ -10,10 +10,11 @@ from typing import Optional
 import httpx
 
 import app.config  # noqa: F401  触发 .env 加载
+from app.llm.usage import USAGE, extract_usage
 
 
 class LLMClient:
-    """极简 DeepSeek Chat 客户端。"""
+    """极简 DeepSeek Chat 客户端（token 用量自动汇入全局计数器）。"""
 
     def __init__(
         self,
@@ -46,6 +47,7 @@ class LLMClient:
         )
         resp.raise_for_status()
         data = resp.json()
+        USAGE.add(*extract_usage(data))
         return data["choices"][0]["message"]["content"]
 
 

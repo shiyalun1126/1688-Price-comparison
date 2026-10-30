@@ -123,8 +123,15 @@
         <span class="chip" onclick="setGoal('帮我分析这个款哪家最便宜，给出采购建议')">哪家最便宜？</span>
         <span class="chip" onclick="setGoal('这个款的数据够不够做比价？有什么问题')">数据够用吗？</span>
         <span class="chip" onclick="setGoal('找出同款，并按价格排序，告诉我能省多少')">比价排序</span>
+        <span class="chip" onclick="setGoal('候选商品太少了，帮我生成1688搜索链接，教我怎么导入')">帮我找候选</span>
       </div>
-      <div id="agent-trace" style="margin-top:14px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+        <h3 style="margin:0">对话历史 <span class="muted" style="font-weight:400;font-size:11px">（按目标款记忆，刷新不丢）</span></h3>
+        <button onclick="clearAgentHistory()" style="font-size:12px;padding:4px 10px">清空对话</button>
+      </div>
+      <div id="agent-history" style="margin-top:6px"></div>
+      <h3 style="margin-top:14px">本次运行</h3>
+      <div id="agent-trace"></div>
     </div>
 
     <div class="card">
@@ -315,6 +322,7 @@ function selectTarget(id) {
   syncCurrentTarget(id);   // 同步给书签使用
   refreshTargets();
   refreshInquiries();
+  loadAgentHistory();      // 按目标款切换对话记忆
 }
 async function createTarget() {
   const form = new FormData();
@@ -464,7 +472,42 @@ const TOOL_CN = {
   match_products: '执行视觉匹配',
   compare_prices: '生成比价结论',
   inquiry_script: '生成询价话术',
+  make_search_link: '生成1688搜索链接',
+  import_products: '导入商品链接',
 };
+
+// ---- 智能体对话历史（持久化在 agent_run 表，刷新/重开都在）----
+async function loadAgentHistory() {
+  const box = document.getElementById('agent-history');
+  if (!box) return;
+  let runs = [];
+  try {
+    const q = currentTargetId ? `?target_id=${encodeURIComponent(currentTargetId)}` : '';
+    runs = await api(`/api/agent/history${q}`);
+  } catch (e) { runs = []; }
+  if (!runs || !runs.length) {
+    box.innerHTML = '<p class="muted" style="font-size:12px;margin:4px 0">暂无历史（智能体每次运行的轨迹和结论都会存在这里）</p>';
+    return;
+  }
+  box.innerHTML = runs.map(r => {
+    const total = (r.prompt_tokens || 0) + (r.completion_tokens || 0);
+    const when = (r.created_at || '').slice(5, 16).replace('T', ' ');
+    return `<details style="border-bottom:1px solid var(--border);padding:6px 2px">
+      <summary style="cursor:pointer;font-size:13px">
+        <b>${escapeHtml((r.goal || '').slice(0, 40))}</b>
+        <span class="muted" style="font-size:11px;margin-left:6px">${when} · ${total} tokens</span>
+      </summary>
+      <div style="font-size:12px;padding:6px 4px;white-space:pre-wrap">${escapeHtml(r.final_answer || '（无结论）')}</div>
+    </details>`;
+  }).join('');
+}
+
+async function clearAgentHistory() {
+  if (!confirm('确定清空' + (currentTargetId ? '该目标款' : '全部') + '的智能体对话历史？')) return;
+  const q = currentTargetId ? `?target_id=${encodeURIComponent(currentTargetId)}` : '';
+  await api(`/api/agent/history${q}`, {method: 'DELETE'});
+  loadAgentHistory();
+}
 
 async function runAgent() {
   const goal = (document.getElementById('agent-goal').value || '').trim();
@@ -521,7 +564,15 @@ async function runAgent() {
   if (r.final_answer) {
     html += `<div class="agent-final"><b>🎯 结论</b>\n\n${escapeHtml(r.final_answer)}</div>`;
   }
+  if (r.usage) {
+    const u = r.usage;
+    const total = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
+    const cost = (u.cost_cny !== null && u.cost_cny !== undefined)
+      ? `，约 ¥${Number(u.cost_cny).toFixed(3)}` : '';
+    html += `<div class="muted" style="font-size:11px;margin-top:6px">💰 本次消耗 ${total} tokens（输入 ${u.prompt_tokens || 0} / 输出 ${u.completion_tokens || 0}，${u.requests || 0} 次调用）${cost}</div>`;
+  }
   box.innerHTML = html || '<p class="muted">智能体没有返回内容</p>';
+  loadAgentHistory();   // 历史里追加本次运行
 
   btn.disabled = false;
   btn.textContent = '让智能体分析';
@@ -923,6 +974,7 @@ refreshTargets();
 loadShops();
 refreshInquiries();
 loadImportTargets();
+loadAgentHistory();
 </script>
 </body>
 </html>

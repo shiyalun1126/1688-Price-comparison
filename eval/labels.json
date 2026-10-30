@@ -1,0 +1,329 @@
+{
+  "_说明": "视觉匹配准确率评估的标注集。reviewed=false 的行由库内判定自动预填（未人工复核，只用于回归基线）；人工核对后把 reviewed 改为 true，评估脚本会单独报告已复核样本的真实准确率。label 取值：exact=完全同款 / equivalent=等效替代 / different=不同款。",
+  "labels": [
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "c2c950170be5475db837f2f6e3fae5ff",
+      "title": "ins草莓蛋糕耳机收纳零钱包 高颜值airpords保护套卡通迷你包挂饰",
+      "label": "different",
+      "note": "[视觉] 图A是白色无线蓝牙耳机及充电盒，图B是粉色草莓刺绣零钱包，属完全不同的商品类别。（差异：商品品类完全不同：无线耳机 vs 刺绣零钱包）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "594c1872e57b4f6798220e9c729cdf75",
+      "title": "TV电视耳机DiscoParty舞蹈广场舞会议降噪蓝牙耳机蓝牙话务耳机",
+      "label": "different",
+      "note": "[视觉] 图A是白色入耳式真无线耳机搭配充电仓，图B是黑色头戴式电视耳机搭配底座，两者品类、形态和颜色都明显不同，不属于同款货。（差异：产品形态完全矛盾：A为入耳式TWS耳机加充电仓，白色；B为头戴式包耳耳机加发射底座，黑色。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "dd4df8f4879a483e84096e7f972d79b8",
+      "title": "工厂适用airpods3苹果耳机硅胶保护套airpords3耳机套创意款式",
+      "label": "different",
+      "note": "[视觉] 图A是白色无线耳机及充电盒，图B是带指南针的青绿色防摔钥匙扣挂件，两者品类、形态、颜色完全不同。（差异：图A为白色TWS蓝牙耳机套装，图B为青绿色指南针钥匙扣，二者并非同一商品。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "ed641941751e46f9a46c527859e6bfb4",
+      "title": "创意立体水饺适用airpords5代蓝牙耳机壳苹果2/3代/pro3保护套",
+      "label": "different",
+      "note": "[视觉] 图A是白色无线蓝牙耳机及充电仓，图B是米色Hello Kitty造型包子挂件，两者品类与外观完全不同。（差异：商品类型明显不同：图A为白色TWS耳机，图B为卡通包子造型挂件）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "eaf15792a445467f89213c60ddc41caa",
+      "title": "工厂直销跨境爆款P9ProMax无线头戴式蓝牙耳机音乐耳麦重低音耳机",
+      "label": "different",
+      "note": "[视觉] 图A为白色入耳式真无线耳机（带充电盒），图B为银白色头戴式包耳耳机，两者是完全不同的产品品类和形态。（差异：佩戴形态根本不同：入耳式TWS耳机 vs 头戴式大耳机）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "93e9b796ead14bd698a740738c41e046",
+      "title": "蓝色猫咪适用airpords4保护套苹果airpodspro3代蓝牙耳机磨砂软壳",
+      "label": "different",
+      "note": "[视觉] 图A是白色无线蓝牙耳机及充电盒实物，图B是印有Hello Kitty卡通图案的彩色磨砂软壳配件，两者品类、图案和颜色都不一样。（差异：图A是白色耳机与充电仓；图B是Hello Kitty卡通印花软壳，颜色和图案与图A完全不同。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "dd3bc6b1fd1342f5a17a99453c75ba44",
+      "title": "适用airpords3耳机套创意款式airpods3苹果无线蓝牙耳机保护套",
+      "label": "different",
+      "note": "[视觉] 图A为白色无线耳机及充电盒，图B为粉色带指南针图案的耳机保护壳，二者明显不是同一款货。（差异：图A是白色耳机/充电盒本体，图B是粉色保护壳且带指南针装饰，产品类型与颜色均明显不同。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "91295d29537b45a78df908b593801584",
+      "title": "蓝色猫咪适用airpords4保护套苹果airpodspro2代蓝牙耳机磨砂软壳",
+      "label": "different",
+      "note": "[视觉] 图A为白色无线耳机及充电仓实物，图B为四色卡通印花耳机保护壳套件，属于完全不同的商品与图案。（差异：商品形态与花色完全不同：A是纯白耳机本体，B是带爱心动物、星星人、Puppy等卡通印花的彩色保护壳，无任何可比的花色或版型一致性。",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "f0703fda2dd14ed7803c687e3253256e",
+      "title": "适用新款airpods5代保护壳airpods pro3套硅胶软壳airpords4蓝牙",
+      "label": "different",
+      "note": "[视觉] 图A为白色无线耳机及素面充电仓，图B为带腊肠犬刺绣、爪印和Dachshund字样的蓝米拼色保护套，两者款式与图案完全不同。（差异：图A是纯白无图案的耳机充电仓，图B是带腊肠犬刺绣和字母印花的拼色保护套，外观设计明显不同。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "5f599af82a714017858f7c93911a09b5",
+      "title": "外贸新款适用airpods3苹果耳机保护套airpords3硅胶防摔耳机保护",
+      "label": "different",
+      "note": "[视觉] 图A是白色的AirPods耳机及充电盒本体，图B是带指南针和挂环的硅胶保护套，套内可装耳机；两者属于商品品类不同的产品，并非同一款货。（差异：图B为外置硅胶保护套，带指南针表盘和金属挂环的配件；图A为耳机充电盒本体，无保护套结构。",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "3b6a86484b3a40ac8b1ccdcd36ca1a79",
+      "title": "厂家直销适用于Airpords蓝牙耳机充电盒清洁工具小毛刷电子烟嘴刷",
+      "label": "different",
+      "note": "[视觉] 图A是带硅胶耳塞的入耳式耳机（Pro样式），图B是无硅胶耳塞的开放式半入耳耳机，且B图主体为清洁刷套装，两者并非同款货。（差异：图A耳机带硅胶入耳耳塞且充电盒为横向宽扁形；图B耳机无硅胶耳塞、为半入耳式，充电盒为竖向竖长方形，形态",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "c7bab8e2009e4dd5b7ce48d29183adae",
+      "title": "REMAX棉花糖tws无线蓝牙耳机 立体声音乐耳机 定制logo礼品定制",
+      "label": "different",
+      "note": "[视觉] 图A为白色入耳式（带硅胶耳塞）AirPods Pro风格耳机，图B为REMAX品牌半入耳式多色系列，品牌和耳机形态明显不同（差异：图A带硅胶耳塞的入耳式设计且无品牌标识，图B为REMAX半入耳式并带品牌Logo及多色可选，属不同产",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "6f783471c9854f4d9b76606914885623",
+      "title": "2026 新款无线华强北蓝牙耳机Air4入耳式主动降噪高音质持久续航",
+      "label": "equivalent",
+      "note": "[视觉] 两图都是白色 AirPods Pro 式入耳式 TWS 耳机，配硅胶耳塞与短柄，白色充电盒正面有指示灯和铰链位，外形、配色、结构一致，仅拍摄方式不同（图A为开盖装入展示，图B为合盖平放摆拍）。（差异：无明确可见矛盾；差异仅为展示角",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "487c999614434177ac97f5572126a0fb",
+      "title": "跨境新款pro6蓝牙耳机半入耳式tws真无线蓝牙运动立体声J6TWS定制",
+      "label": "different",
+      "note": "[视觉] 两款的充电盒形状与耳机柄比例明显不一致，因此判定为不同款。（差异：充电盒造型明显不同：A 是扁平宽矩形，并带金属铰链；B 是圆形或蛋形小盒，且耳机柄更长；此外 B 还展示多色，侧面显示采用同一模具，可见两者不是同款）",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "b9ed27116e054358b14cc1fb45dcd090",
+      "title": "跨境华强北七代pods4八代Pro3适用苹果无线降噪音乐蓝牙耳机批发",
+      "label": "equivalent",
+      "note": "[视觉] 两者均为白色真无线入耳式耳机配充电盒，B为供货示意/多型号图，未见明确可见的矛盾特征。",
+      "reviewed": false
+    },
+    {
+      "target_id": "f951083f5df9480ea90a57c299607570",
+      "target_name": "airpods",
+      "product_id": "3fbf39ecf49049a79e2120d83a91708a",
+      "title": "跨境华强北七代pods4八代Pro3适用苹果无线降噪音乐蓝牙耳机批发",
+      "label": "equivalent",
+      "note": "[视觉] 图B是白色入耳式TWS耳机及充电盒的线稿示意图，其轮廓和形态与图A的白色入耳式耳机及充电盒一致；只是图B还标注为通版供货图，涵盖Pro2、pods4、Pro3、pods5等多个型号，并且没有实物细节，因此无法确认是否为同一模具版本",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "a33202eef1494b68be828da383b0ae3e",
+      "title": "男士撞色翻领长袖Polo衫黑领搭配细白线条三粒扣设计简约大气上衣",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色短袖、同色衣领的Polo衫；图B为白色长袖、黑色撞色衣领的Polo衫，二者在花色、袖长和领型配色上均明显不同。（差异：颜色（浅灰蓝 vs 白色）、袖长（短袖 vs 长袖）、衣领（同色 vs 黑色撞色）均明显矛盾）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "c2721a5f41a44f5eb3f9d8537fc9bcb7",
+      "title": "冰爽棉长袖翻领polo衫定制纯色工作服团体班服商务广告衫刺绣男装",
+      "label": "different",
+      "note": "[视觉] 颜色与袖长明显不同：图A为浅灰蓝色短袖,图B为橙色长袖。（差异：颜色明显不同（浅灰蓝 vs 橙色）,袖长明显不同（短袖 vs 长袖））",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "4124ae9506f84c128e635738e3f024c4",
+      "title": "撞色条纹长袖polo衫男士春秋款上衣设计感INS街潮字母刺绣翻领t恤",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色纯色短袖Polo衫，图B为绿黑宽条纹长袖Polo衫且胸前有白色花体刺绣字母，颜色、图案、袖长均明显不同。（差异：颜色与图案：纯浅灰蓝纯色 vs 绿黑宽条纹+胸前白色字母刺绣；袖型：短袖 vs 长袖）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "3fdb42f114144581974d9a992bb64304",
+      "title": "100%丝光棉刺绣保罗POLO衫轻奢男士t春秋翻领高档商务休闲长袖T恤",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色纯色POLO衫，图B为深色（藏青/黑）POLO，领内印有马球图案文字并在胸前有刺绣logo，颜色与图案均明显不同。（差异：底色明显不同（浅灰蓝 vs 深藏青），且图B有胸前马球刺绣和领内印花，图A为纯色无图案。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "1a5491b41d5c45e4a94a55848d0f1950",
+      "title": "纯色翻领T恤可印logo 男士透气商务短袖 团体工作服Polo衫",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色,下摆收口的休闲Polo衫;图B为宝蓝色,直筒平下摆的定制款Polo衫。（差异：颜色明显不同(浅灰蓝 vs 宝蓝),且下摆版型不同(收口罗纹 vs 平下摆)。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "c75b48efbc754406bf035e7776090031",
+      "title": "外贸Polo衫速干短袖定制欧美大码热升华冰丝翻领短袖工作服印LOGO",
+      "label": "different",
+      "note": "[视觉] 图A为纯浅灰蓝色基础款短袖POLO衫，图B是多彩拼色带印花logo的定制POLO衫合集，花色图案完全不同。（差异：图A为纯浅灰蓝色净色POLO；图B为红白、绿、蓝白等拼色且带企业logo印花的POLO，图案与配色明显不同。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "f8b9b8c702134095a5e9d221a3d7d9e3",
+      "title": "春秋新款男式水洗跨境长袖有领休闲纯色上衣潮流翻领百搭polo",
+      "label": "different",
+      "note": "[视觉] 图A是浅灰蓝色短袖Polo，图B是深藏青色长袖Polo，颜色和袖长这两处明确可见的差异相互矛盾（差异：颜色（浅灰蓝 vs 深藏青）和袖长（短袖 vs 长袖）均明显不同）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "eee8216a982b4c43b57a01661336513d",
+      "title": "240G半高领拉链长袖POLO衫 商务长袖通勤休闲男士工装团体服定制",
+      "label": "different",
+      "note": "[视觉] 图A是浅灰蓝色短袖翻领纽扣Polo衫，图B是米白色长袖立领半拉链Polo衫，两者的颜色、袖长和领型都明显不同。（差异：袖长（短袖 vs 长袖）、领型（翻领纽扣门襟 vs 立领半拉链）、颜色（浅灰蓝 vs 米白）均明确可见且相互矛盾",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "904050cb77ce411787e185f477bf6293",
+      "title": "2024秋冬季男士加绒加厚假两件上衣男长袖t恤休闲条纹翻领POLO衫",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰纯色短袖翻领Polo衫，图B为卡其色长袖V领衫，衣身为拼条纹领与条纹袖设计，袖长、领型与配色均明显不同。（差异：短袖纯色翻领 vs 长袖V领条纹拼接；浅灰 vs 卡其色）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "9c0e9188e29d416191e5b086d6932dbf",
+      "title": "跨境男装纯色圆领长袖上衣亚马逊春秋外贸欧码休闲户外运动polo衫",
+      "label": "different",
+      "note": "[视觉] 图A是浅灰蓝色短袖翻领Polo衫，图B是绿色长袖无领亨利衫，领型、袖长和颜色均明显不同。（差异：领型（翻领Polo vs 无领亨利圆领带扣）与袖长（短袖 vs 长袖）明确可见地矛盾，颜色也不同（浅灰蓝 vs 军绿）。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "958cb1b5f22044cabbcb0cb20f891c67",
+      "title": "外贸Polo衫速干短袖定制欧美大码热升华冰丝翻领短袖工作服印LOGO",
+      "label": "different",
+      "note": "[视觉] 图A为纯浅灰蓝色细针织纯色Polo，图B为多色拼接、撞色领的定制Polo宣传图，花色与款式设计明显不符。（差异：图A是纯色细肌理浅灰蓝Polo，图B均为多色拼接、撞色领、带Logo印花的定制款Polo，颜色和图案完全不同。）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "b36ccdff6bd3498c8259af84bc6638c2",
+      "title": "阿里虎",
+      "label": "different",
+      "note": "[视觉] 图A为纯浅灰蓝色纯色polo衫，无任何刺绣或撞色设计；图B为米白/奶油色，带有马球刺绣logo、撞色深色领圈与门襟装饰，两者颜色与图案明显不同（差异：底色明显不同（浅灰蓝 vs 米白/奶油色），且图B胸前有马球刺绣logo和深色撞",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "f24ee041b8664a67b0a626051f3115c2",
+      "title": "2025春夏跨境新款男式商务休闲毛织polo衫翻领针织polo衫短袖男T",
+      "label": "different",
+      "note": "[视觉] 两件衣服的门襟方式和细节设计明显不一致：图A是浅灰蓝色的纽扣门襟纯色针织Polo，图B是白色立体的拉链门襟，并带有竖向压线，袖口还有棕色撞色包边。（差异：门襟明显不同（图A用纽扣，图B用拉链），并且图B有棕色袖口撞色包边和竖向压线",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "60dbb4e08660468487b8b0f62a9a4898",
+      "title": "间色领长袖POLO衫秋季团体训练服文化衫商务翻领工作服广告衫男装",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色短袖polo，领口与衣身同色无镶边；图B为藏青色长袖polo，领口带白色撞色镶边，袖长与领部设计明显不同。（差异：袖长（短袖 vs 长袖）与领口撞色镶边）",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "229a6c0b2f0d4e9f92133bdb9ab5e5c3",
+      "title": "阿里虎",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色，无明显胸前logo，采用细密针织面料；图B为米杏色，左胸有马球刺绣，领内有印花标识，两者颜色与图案细节均明显不同。（差异：颜色明显不同（浅灰蓝 vs 米杏色），且图B左胸有马球刺绣logo，图A同位置清晰可见却无任",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "8a1e6cf7c4174396a24630a2d509bc33",
+      "title": "夏季男式T恤短袖翻领polo衫企业广告文化衫工作服团体服t恤印logo",
+      "label": "different",
+      "note": "[视觉] 图A是纯浅灰蓝、无撞色罗纹领的简约时尚款Polo；图B是多色（藏青、粉、白、蓝、黄等）、带领口撞色条纹包边（白红蓝条）的定制工装Polo，领口设计与产品类型明显不同。（差异：领口设计：图A为纯色无条纹领，图B所有颜色款领口均有明显",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "7b9ba4d4c9e54516b794ecc55a7af891",
+      "title": "外贸欧码美码纯棉T恤定制logo印字广告衫圆领定做短袖订做文化衫",
+      "label": "equivalent",
+      "note": "[视觉] 图A为浅灰蓝纯色针织Polo衫，图B为多色纯色Polo衫工厂挂拍图，两者领型、短袖、门襟及整体版型一致，属同一类基础款Polo货源，仅拍摄方式与展示颜色不同。",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "ba1093c2d5a84c99b902185f002bb282",
+      "title": "高品质210G40支丝光棉长袖翻领POLO衫抗菌抗起球商务工衣工装印lo",
+      "label": "different",
+      "note": "[视觉] 图A为浅灰蓝色短袖POLO，图B主推款为天蓝色长袖POLO，袖长这一版型差异明确可见，且并非因拍摄角度而被遮挡的细节。（差异：袖长：图A是短袖（袖口在上臂处收口），图B是长袖（袖口到手腕处收口））",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "955292284a9f4f4797174b3c7167e6cf",
+      "title": "Polo领t恤男夏季商务男款潮流痞帅男士纯色POLO衫",
+      "label": "equivalent",
+      "note": "[视觉] 两图都是翻领短袖polo衫，门襟带扣，袖口有罗纹收边，图B最前方的浅蓝色与图A的浅灰蓝基调接近，仅是模特实拍和工厂挂拍方式不同。",
+      "reviewed": false
+    },
+    {
+      "target_id": "210c659c2ed641fa8a115a1c2ba44534",
+      "target_name": "POLO衫",
+      "product_id": "f7e2125a485d4dd399f6970ffb863b36",
+      "title": "找相似",
+      "label": "equivalent",
+      "note": "[视觉] 两图都是纯色短袖Polo衫，翻领和门襟扣位结构一致；图A的灰蓝色对应图B九色之一的灰色，图B胸前刺绣是“定制LOGO”这类可选项，不是固定图案，版型差异主要来自模特和拍摄，因此判为同款或等效。（差异：无明确矛盾；图B主图为浅蓝且有",
+      "reviewed": false
+    }
+  ]
+}

@@ -5,8 +5,10 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Optional
 
 from app.models.entities import (
+    AgentRunRecord,
     ComparisonResult,
     InquiryTask,
     Product,
@@ -96,6 +98,20 @@ CREATE INDEX IF NOT EXISTS idx_inquiry_target  ON inquiry(target_style_id);
 CREATE INDEX IF NOT EXISTS idx_inquiry_product ON inquiry(target_style_id, product_id);
 CREATE INDEX IF NOT EXISTS idx_quote_target    ON quote(target_style_id);
 CREATE INDEX IF NOT EXISTS idx_quote_product   ON quote(product_id);
+
+-- 智能体运行记录：多轮记忆 + 轨迹持久化 + token 统计的载体
+CREATE TABLE IF NOT EXISTS agent_run (
+    id TEXT PRIMARY KEY,
+    target_style_id TEXT,
+    goal TEXT NOT NULL,
+    steps TEXT NOT NULL DEFAULT '[]',
+    final_answer TEXT NOT NULL DEFAULT '',
+    finished INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_target ON agent_run(target_style_id);
 """
 
 
@@ -236,6 +252,12 @@ class Store:
             )
             self._conn.commit()
 
+    def get_product(self, id: str) -> Product | None:
+        row = self._conn.execute(
+            "SELECT * FROM product WHERE id=?", (id,)
+        ).fetchone()
+        return self._row_to_product(row) if row else None
+
     def list_products(self, target_style_id: str) -> list[Product]:
         with self._lock:
             rows = self._conn.execute(
@@ -370,3 +392,52 @@ class Store:
             negotiation_script=row["negotiation_script"], summary=row["summary"],
             fingerprint=(row["fingerprint"] or "") if "fingerprint" in row.keys() else "",
         )
+
+    # ---- agent_run ---------------------------------------------------------
+    def save_agent_run(self, r: AgentRunRecord) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO agent_run
+               (id, target_style_id, goal, steps, final_answer, finished,
+                prompt_tokens, completion_tokens, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                r.id, r.target_style_id, r.goal, json.dumps(r.steps, ensure_ascii=False),
+                r.final_answer, int(r.finished),
+                r.prompt_tokens, r.completion_tokens, _iso(r.created_at),
+            ),
+        )
+        self._conn.commit()
+
+    def list_agent_runs(self, target_style_id: Optional[str] = None,
+                        limit: int = 20) -> list[AgentRunRecord]:
+        """按时间倒序列出运行记录；带 target 时只看该目标款的。"""
+        from datetime import datetime
+        if target_style_id:
+            rows = self._conn.execute(
+                "SELECT * FROM agent_run WHERE target_style_id=? ORDER BY created_at DESC LIMIT ?",
+                (target_style_id, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM agent_run ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [
+            AgentRunRecord(
+                id=r["id"], target_style_id=r["target_style_id"], goal=r["goal"],
+                steps=_loads(r["steps"], []), final_answer=r["final_answer"],
+                finished=bool(r["finished"]),
+                prompt_tokens=r["prompt_tokens"], completion_tokens=r["completion_tokens"],
+                created_at=datetime.fromisoformat(r["created_at"]),
+            )
+            for r in rows
+        ]
+
+    def clear_agent_runs(self, target_style_id: Optional[str] = None) -> int:
+        """清空运行记录（可按目标款）。"""
+        if target_style_id:
+            cur = self._conn.execute(
+                "DELETE FROM agent_run WHERE target_style_id=?", (target_style_id,))
+        else:
+            cur = self._conn.execute("DELETE FROM agent_run")
+        self._conn.commit()
+        return cur.rowcount

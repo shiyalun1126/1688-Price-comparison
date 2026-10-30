@@ -21,6 +21,7 @@ import httpx
 from PIL import Image
 
 import app.config  # noqa: F401  触发 .env 加载
+from app.llm.usage import USAGE, extract_usage
 
 VISION_MODEL = "deepseek-flash"
 
@@ -240,6 +241,7 @@ def compare_images(
             parsed.setdefault("same", parsed.get("tier") != "different")
             parsed.setdefault("confidence", 0.5)
             parsed.setdefault("reason", "")
+            USAGE.add(*extract_usage(data))
             return parsed
         except Exception as e:
             last_err = e

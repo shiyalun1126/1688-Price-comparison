@@ -122,3 +122,20 @@ class ComparisonResult(BaseModel):
     negotiation_script: str = ""                      # 议价话术
     summary: str = ""                                 # 综述
     fingerprint: str = ""                             # 输入数据指纹（缓存命中判断）
+
+
+# ---------------------------------------------------------------------------
+# 智能体运行记录
+# ---------------------------------------------------------------------------
+class AgentRunRecord(BaseModel):
+    """一次智能体运行的持久化记录（轨迹 + token 用量）。"""
+
+    id: str
+    target_style_id: Optional[str] = None
+    goal: str
+    steps: list[dict] = Field(default_factory=list)
+    final_answer: str = ""
+    finished: bool = False
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    created_at: datetime = Field(default_factory=datetime.now)

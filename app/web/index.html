@@ -249,6 +249,24 @@ textarea { resize: vertical; }
   border: 1.5px dashed var(--border-strong); border-radius: var(--r-m);
   padding: 28px 20px; text-align: center; font-size: 13px; color: var(--muted); line-height: 1.8;
 }
+/* 询价筛选 chips */
+#inq-chips button {
+  cursor: pointer; font: inherit; font-size: 12px; line-height: 1.7;
+  padding: 2px 11px; border-radius: 999px; background: transparent;
+  border: 1px solid var(--border); color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#inq-chips button.on {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+/* 话术折叠 */
+.script-fold summary {
+  cursor: pointer; color: var(--accent-deep, var(--accent)); font-size: 12px;
+  user-select: none; list-style: none;
+}
+.script-fold summary::before { content: '▸ '; }
+.script-fold[open] summary::before { content: '▾ '; }
+.script-fold pre { margin-top: 6px; }
 
 /* 表格（匹配结果 / 比价 / 询价共用） */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -633,6 +651,7 @@ table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--c
               </div>
             </div>
             <p class="zone-hint">逐个店铺生成话术 → 去旺旺发送 → 回贴卖家回复 → 自动解析报价。</p>
+            <div id="inq-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px"></div>
             <div id="workbench"></div>
           </section>
 
@@ -893,6 +912,7 @@ function selectTarget(id) {
   syncCurrentTarget(id);   // 同步给书签使用
   refreshTargets();
   refreshInquiries();
+  loadCachedComparison();  // 自动回显已缓存的比价结论（命中缓存零成本）
   loadAgentHistory();      // 按目标款切换对话记忆
 }
 
@@ -1396,10 +1416,7 @@ function fmtConditions(x) {
   return parts.join('<br>');
 }
 
-async function runComparison() {
-  if (!currentTargetId) return alert('先选择目标款');
-  const r = await api(`/api/targets/${currentTargetId}/comparison`, {method:'POST'});
-  if (r.error) { alert('生成失败：' + r.error); return; }
+function renderComparison(r) {
   let html = `<div class="cmp-summary"><div class="trace-label" style="color:var(--accent-deep)">综述</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.summary||''}</p></div>`;
   if (r.rows && r.rows.length) {
     html += `<table><thead><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>匹配</th>`
@@ -1437,16 +1454,63 @@ async function runComparison() {
   updatePipeline();
 }
 
+async function runComparison() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const r = await api(`/api/targets/${currentTargetId}/comparison`, {method:'POST'});
+  if (r.error) { alert('生成失败：' + r.error); return; }
+  renderComparison(r);
+}
+
+// 切款/首载时自动回显：只读与当前指纹匹配的缓存结论（零 LLM，未命中静默降级）
+async function loadCachedComparison() {
+  const el = document.getElementById('result');
+  if (!currentTargetId || !el) return;
+  el.innerHTML = '<div class="empty" style="opacity:.6">正在加载比价结论…</div>';
+  const r = await api(`/api/targets/${currentTargetId}/comparison`).catch(() => null);
+  // 请求期间用户已切到别的目标款，丢弃过期结果
+  if (!r || r.error || r.cached === false) {
+    if (currentTargetId && r && r.cached === false) {
+      el.innerHTML = '<div class="empty">尚无比价结论。先「执行视觉匹配」分出同款与替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
+    }
+    return;
+  }
+  renderComparison(r);
+}
+
 // ================= 询价工作台 =================
 const STATUS_CN = {pending:'未询价', draft:'话术已备', sent:'已发送', replied:'已回复', quoted:'已报价', closed:'已关闭'};
 
 async function refreshInquiries() {
   const el = document.getElementById('workbench');
-  if (!currentTargetId) { el.innerHTML = '<p class="muted">请先选择或创建一个目标款</p>'; inquiries = []; updatePipeline(); return; }
+  if (!currentTargetId) { el.innerHTML = '<p class="muted">请先选择或创建一个目标款</p>'; inquiries = []; renderInqChips(); updatePipeline(); return; }
+  inquiries = null;          // null = 加载中：显示加载态而非"暂无"空态
+  renderWorkbench();
+  renderInqChips();
   inquiries = await api(`/api/targets/${currentTargetId}/inquiries`);
   if (!Array.isArray(inquiries)) inquiries = [];
   renderWorkbench();
+  renderInqChips();
   updatePipeline();
+}
+let inqFilter = 'all';
+const INQ_FILTERS = [
+  { key: 'all',        label: '全部',     match: q => true },
+  { key: 'exact',      label: '完全同款', match: q => (q.tier || 'unverified') === 'exact' },
+  { key: 'equivalent', label: '等效替代', match: q => (q.tier || 'unverified') === 'equivalent' },
+  { key: 'quoted',     label: '已报价',   match: q => q.price_source === 'quoted' || q.status === 'quoted' },
+  { key: 'unverified', label: '未核验',   match: q => (q.tier || 'unverified') === 'unverified' && q.price_source !== 'quoted' },
+  { key: 'rejected',   label: '已排除',   match: q => (q.tier || 'unverified') === 'rejected' },
+];
+function renderInqChips() {
+  const el = document.getElementById('inq-chips');
+  if (!el) return;
+  if (!inquiries || !inquiries.length) { el.innerHTML = ''; return; }
+  el.innerHTML = INQ_FILTERS.map(f => {
+    const n = inquiries.filter(f.match).length;
+    if (f.key !== 'all' && n === 0) return '';
+    const on = inqFilter === f.key;
+    return `<button type="button" class="${on ? 'on' : ''}" onclick="inqFilter='${f.key}';renderInqChips();renderWorkbench()">${f.label} ${n}</button>`;
+  }).join('');
 }
 const INQ_TIER_CN = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
 const INQ_TIER_STYLE = {
@@ -1480,13 +1544,15 @@ function tierPrice(q) {
 }
 function renderWorkbench() {
   const el = document.getElementById('workbench');
+  if (inquiries === null) { el.innerHTML = '<div class="empty" style="opacity:.6">加载中…</div>'; return; }
   if (!inquiries.length) { el.innerHTML = '<div class="empty">暂无候选商品。先在「02 候选商品」添加，或从 1688 书签导入。</div>'; return; }
   const kw = (document.getElementById('inquiry-search')?.value || '').trim().toLowerCase();
-  const rows = kw
-    ? inquiries.filter(q => (q.shop_name || '').toLowerCase().includes(kw) || (q.title || '').toLowerCase().includes(kw))
-    : inquiries;
+  let rows = inquiries;
+  const f = INQ_FILTERS.find(x => x.key === inqFilter);
+  if (f && f.key !== 'all') rows = rows.filter(f.match);
+  if (kw) rows = rows.filter(q => (q.shop_name || '').toLowerCase().includes(kw) || (q.title || '').toLowerCase().includes(kw));
   if (!rows.length) {
-    el.innerHTML = `<div class="empty">没有匹配「${escapeHtml(kw)}」的商家，<a href="#" onclick="document.getElementById('inquiry-search').value='';renderWorkbench();return false;" style="color:var(--accent-deep,var(--accent))">清除搜索</a></div>`;
+    el.innerHTML = `<div class="empty">没有匹配「${escapeHtml(kw) || INQ_FILTERS.find(x => x.key === inqFilter)?.label || ''}」的条目，<a href="#" onclick="inqFilter='all';document.getElementById('inquiry-search').value='';renderInqChips();renderWorkbench();return false;" style="color:var(--accent-deep,var(--accent))">清除筛选</a></div>`;
     return;
   }
   let html = '<table><thead><tr><th>店铺</th><th>商品</th><th>核验 · 价格</th><th>状态</th><th>话术 / 回复</th><th>操作</th></tr></thead><tbody>';
@@ -1498,7 +1564,7 @@ function renderWorkbench() {
       cell = '<span class="muted">—</span>';
       actions = `<button class="btn default sm" onclick="makeInquiry('${q.product_id}')">生成话术</button>`;
     } else {
-      cell = `<pre>${escapeHtml(q.script||'')}</pre>`;
+      cell = `<details class="script-fold"><summary>${q.status === 'quoted' ? '报价已到 · 点开查看话术 / 回复' : '点开查看话术'}</summary><pre>${escapeHtml(q.script||'')}</pre></details>`;
       if (q.status === 'draft') {
         actions = `<button class="btn default sm" onclick="copyScript('${q.id}')">复制</button>
                    <button class="btn ghost sm" onclick="setStatus('${q.id}','sent')">标记已发送</button>`;
@@ -1515,7 +1581,7 @@ function renderWorkbench() {
           + `<td>${cell}</td><td style="white-space:nowrap">${actions}</td></tr>`;
   }
   html += '</tbody></table>';
-  if (kw) html += `<p class="muted" style="margin:8px 2px 0;font-size:12px">搜索命中 ${rows.length} / ${inquiries.length} 条（列表默认按视觉核验分层与价格排序）</p>`;
+  if (kw || (f && f.key !== 'all')) html += `<p class="muted" style="margin:8px 2px 0;font-size:12px">命中 ${rows.length} / ${inquiries.length} 条（列表默认按视觉核验分层与价格排序）</p>`;
   el.innerHTML = html;
 }
 
@@ -1769,6 +1835,7 @@ async function showDemo() {
 refreshTargets();
 loadShops();
 refreshInquiries();
+loadCachedComparison();   // 首载也回显当前目标款的缓存结论
 loadImportTargets();
 loadAgentHistory();
 </script>

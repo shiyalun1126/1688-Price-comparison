@@ -245,11 +245,13 @@ def run_comparison(
     target: TargetStyle,
     llm: Optional[LLMClient] = None,
     force_refresh: bool = False,
-) -> ComparisonResult:
+    cache_only: bool = False,
+) -> Optional[ComparisonResult]:
     """从 store 拉商品标价 + 询价报价 + 店铺，生成比价结论并落库。
 
     带数据指纹缓存：输入数据未变化时直接复用上次结论（省 LLM 调用与等待），
     force_refresh=True 时跳过缓存强制重算。
+    cache_only=True 时只读取与当前指纹匹配的缓存，未命中返回 None（不触发 LLM）。
     """
     quotes = store.list_quotes(target.id)
     shops = {s.id: s for s in store.list_shops()}
@@ -260,6 +262,8 @@ def run_comparison(
         cached = store.get_comparison(target.id)
         if cached and cached.fingerprint == fp:
             return cached
+        if cache_only:
+            return None
 
     result = build_comparison(target, quotes, shops, products, llm)
     result.fingerprint = fp

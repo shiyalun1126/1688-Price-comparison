@@ -658,6 +658,24 @@ def comparison(request: Request, target_id: str, refresh: bool = False):
     return result.model_dump()
 
 
+@router.get("/targets/{target_id}/comparison")
+def comparison_cached(request: Request, target_id: str):
+    """只读当前指纹匹配的缓存结论（零 LLM），未命中返回 {cached:false}。
+
+    供前端切款时自动回显：命中则直接渲染，未命中不打扰用户。
+    """
+    store = _store(request)
+    target = store.get_target_style(target_id)
+    if not target:
+        return {"error": "目标款不存在"}
+    result = run_comparison(store, target, cache_only=True)
+    if result is None:
+        return {"cached": False}
+    data = result.model_dump()
+    data["cached"] = True
+    return data
+
+
 _TIER_CN = {"exact": "完全同款", "equivalent": "等效替代", "unverified": "未核验", "rejected": "已排除"}
 _STATUS_CN = {"pending": "未询价", "draft": "话术已备", "sent": "已发送",
               "replied": "已回复", "quoted": "已报价", "closed": "已关闭"}

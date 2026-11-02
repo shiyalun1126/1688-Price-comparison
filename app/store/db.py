@@ -142,17 +142,38 @@ def _loads(s: str, default):
 
 
 class Store:
-    """按类型简单封装的 SQLite 存储。"""
+    """按类型简单封装的 SQLite 存储。
+
+    线程模型：FastAPI 同步端点跑在线程池里，多线程共享同一条 sqlite3 连接
+    会触发 sqlite3.InterfaceError（bad parameter or other API misuse），甚至
+    行数据串线程（fromisoformat 收到别行的值）。因此连接按线程隔离
+    （threading.local），并开启 WAL + busy_timeout 允许读写并发；
+    _lock 仅用于序列化少量显式多步写事务。
+    """
 
     def __init__(self, db_path: str | Path):
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._lock = threading.RLock()   # 保护共享连接（多线程匹配时使用）
-        self._conn.executescript(_SCHEMA)
+        self._local = threading.local()
+        self._lock = threading.RLock()   # 序列化跨线程的多步写事务
+        conn = self._conn                # 当前线程连接（通常即主线程）
+        conn.executescript(_SCHEMA)
         self._migrate()
-        self._conn.commit()
+        conn.commit()
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        """返回当前线程的独立连接（懒创建）。"""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(str(self._path), timeout=10)
+            conn.row_factory = sqlite3.Row
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.DatabaseError:
+                pass  # 只读文件系统等场景退回默认日志模式
+            self._local.conn = conn
+        return conn
 
     def _migrate(self) -> None:
         """补齐旧库缺少的列（幂等）。"""
@@ -171,7 +192,10 @@ class Store:
             self._conn.execute("ALTER TABLE quote ADD COLUMN lead_time_hours INTEGER")
 
     def close(self) -> None:
-        self._conn.close()
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
     # ---- target_style -----------------------------------------------------
     def save_target_style(self, ts: TargetStyle) -> None:

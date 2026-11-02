@@ -198,6 +198,8 @@ class Store:
             self._conn.execute("ALTER TABLE quote ADD COLUMN lead_time_hours INTEGER")
 
     def close(self) -> None:
+        # 只能关闭「调用者线程」的连接（threading.local 设计的固有限制）；
+        # 其余线程的连接随线程结束由 GC 回收，SQLite 会安全释放。
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             conn.close()

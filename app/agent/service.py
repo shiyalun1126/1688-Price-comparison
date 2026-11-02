@@ -76,7 +76,7 @@ def _plan_recap(plan) -> str:
 def run_agent(store: Store, goal: str, target_id: str | None = None) -> dict:
     """执行一次 Agent 运行：带记忆、持久化轨迹、统计 token 用量。"""
     tools = build_tools(store, current_target_id=target_id)
-    agent = ReActAgent(tools=tools, system_prompt=SYSTEM_PROMPT, max_rounds=8)
+    agent = ReActAgent(tools=tools, system_prompt=SYSTEM_PROMPT, max_rounds=10)
 
     context = None
     if target_id:

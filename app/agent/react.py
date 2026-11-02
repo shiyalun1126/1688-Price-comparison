@@ -56,7 +56,7 @@ class ReActAgent:
         self,
         tools: list[ToolSpec],
         system_prompt: str,
-        max_rounds: int = 6,
+        max_rounds: int = 10,
         model: Optional[str] = None,
     ):
         self.tools = {t.name: t for t in tools}

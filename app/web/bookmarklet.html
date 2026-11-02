@@ -157,10 +157,14 @@ const API_BASE = location.origin;   // 本系统的地址
 
 let currentTargetId = null;
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 async function loadTargets() {
   const list = await (await fetch('/api/targets')).json();
   const sel = document.getElementById('target-select');
-  sel.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  sel.innerHTML = list.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
   if (list.length) currentTargetId = list[0].id;
   sel.onchange = () => { currentTargetId = sel.value; renderBookmarklet(); };
   renderBookmarklet();

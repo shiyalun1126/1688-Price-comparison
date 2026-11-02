@@ -57,10 +57,12 @@ def _parse_rules(reply: str) -> dict:
         "price": None, "moq": None, "tax": TaxStatus.UNKNOWN, "tiers": [],
         "stock_status": StockStatus.UNKNOWN, "lead_time_hours": None,
     }
-    # 价格：形如「5.5 元」「5元」「¥5」「5.5/件」
+    # 价格：形如「5.5 元」「5元」「¥5」「5.5/件」（含无中文单位的单价写法）
     m = re.search(r"[¥￥]\s*(\d+(?:\.\d+)?)", reply)
     if not m:
         m = re.search(r"(\d+(?:\.\d+)?)\s*(?:元|块)/?(?:件|个|只|条|套|包)?", reply)
+    if not m:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*/\s*(?:件|个|只|条|套|包|pcs|PCS)", reply)
     if m:
         result["price"] = float(m.group(1))
     if "不含税" in reply or "不含票" in reply:

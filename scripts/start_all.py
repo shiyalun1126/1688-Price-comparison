@@ -51,8 +51,26 @@ def app_healthy() -> bool:
     return _http_ok(f"{APP_URL}api/targets")
 
 
+def _check_deps() -> bool:
+    """启动前预检依赖，缺依赖时给出可操作的提示而不是让服务静默起不来。"""
+    missing = []
+    for mod in ("fastapi", "uvicorn", "httpx", "pydantic", "PIL"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        print(f"[0/3] 当前 Python（{sys.executable}）缺少依赖：{', '.join(missing)}")
+        print("      请先安装项目依赖，例如：")
+        print(f'      "{sys.executable}" -m pip install -e .')
+        return False
+    return True
+
+
 def start_app() -> str:
     """返回 'running'（已在跑）或 'started'（本次拉起）。"""
+    if not _check_deps():
+        return "missing-deps"
     if _port_open(APP_PORT):
         if app_healthy():
             print(f"[1/3] 看板服务已在运行（端口 {APP_PORT}），直接复用。")

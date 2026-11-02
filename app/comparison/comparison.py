@@ -73,7 +73,8 @@ def _quote_row(q: Quote, p: Optional[Product], shop: Optional[Shop]) -> dict:
         "tiers": q.tiers,              # 阶梯价 [{qty, price}]
         "condition_note": q.condition_note,
         "tier": tier,
-        "comparable": tier == MatchTier.EXACT.value,
+        # 无有效价格（解析失败=0）的报价不可比，防止 ¥0 顶掉真实价格
+        "comparable": tier == MatchTier.EXACT.value and q.price is not None and q.price > 0,
         "url": p.url if p else None,
         "quoted_at": q.quoted_at.isoformat(),
     }
@@ -93,8 +94,11 @@ def _merge_rows(products: list[Product], quotes: list[Quote],
 
     # 再用报价覆盖同商品（报价更可信）
     # 同一商品可能有多条报价（多次询价/多轮谈判），按报价时间升序处理，
-    # 让最新一条最终生效（否则 list_quotes 的价格排序会让旧价覆盖新价）
+    # 让最新一条最终生效（否则 list_quotes 的价格排序会让旧价覆盖新价）。
+    # 无有效价格（<=0，通常是寒暄回复解析失败）的报价不覆盖标价、不参与比价。
     for q in sorted(quotes, key=lambda x: x.quoted_at):
+        if q.price is None or q.price <= 0:
+            continue
         p = pmap.get(q.product_id)
         qr = _quote_row(q, p, shops.get(q.shop_id))
         # 保留标价作为参考
@@ -150,6 +154,15 @@ def build_comparison(
         else:
             rec = (f"完全同款中价格最低的是「{cheapest['shop_name']}」，{src} "
                    f"{cheapest['price']:.2f} 元。注意核对 MOQ / 含税 / 运费后再定。")
+        # 页面标价可能是引流饵价（非真实成交价），最低价若来自标价须明确提示
+        if cheapest["price_source"] == "listed":
+            quoted_rows = [r for r in exact_rows if r["price_source"] == "quoted"]
+            if quoted_rows:
+                rec += (f" ⚠️ 该最低价为页面标价（可能为引流价，未必能按此价成交），"
+                        f"已核实报价最低为「{quoted_rows[0]['shop_name']}」"
+                        f"{quoted_rows[0]['price']:.2f} 元，以下单报价为准。")
+            else:
+                rec += " ⚠️ 该价格来自页面标价，可能为引流价；建议发起询价核实真实成交价后再决策。"
         if len(exact_rows) > 1:
             gap = exact_rows[-1]["price"] - cheapest["price"]
             if gap > 0:

@@ -1,6 +1,7 @@
 """FastAPI 主应用 + 路由。"""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,18 +16,29 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="1688 比价智能体", version="0.1.0")
+    store = Store(DATA_DIR / "app.db")
 
-    # 允许书签脚本从 1688 页面 POST 到本地服务
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        yield
+        store.close()
+
+    app = FastAPI(title="1688 比价智能体", version="0.1.0", lifespan=lifespan)
+
+    # 书签脚本从 1688 商品页 POST 到本地服务，只放行 1688 域名 + 本机看板；
+    # 不再使用 "*"：任意网页的 JS 都能读写本地采购数据、烧 LLM 额度
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+        ],
+        allow_origin_regex=r"^https?://([a-z0-9-]+\.)*1688\.com$",
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    store = Store(DATA_DIR / "app.db")
     app.state.store = store
 
     app.include_router(router)
@@ -57,10 +69,6 @@ def create_app() -> FastAPI:
     @app.get("/smart-bm", response_class=HTMLResponse)
     def smart_bm_page() -> str:
         return (web_dir / "smart-bm.html").read_text(encoding="utf-8")
-
-    @app.on_event("shutdown")
-    def shutdown() -> None:
-        store.close()
 
     return app
 

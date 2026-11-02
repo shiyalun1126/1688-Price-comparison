@@ -23,7 +23,9 @@ from PIL import Image
 import app.config  # noqa: F401  触发 .env 加载
 from app.llm.usage import USAGE, extract_usage
 
-VISION_MODEL = "deepseek-flash"
+# 视觉模型可通过环境变量 DEEPSEEK_VISION_MODEL 覆盖（如代理网关只提供其它模型时）；
+# 默认 deepseek-flash：官方推理型多模态模型，content 可能为空、答案在 reasoning_content
+VISION_MODEL = os.getenv("DEEPSEEK_VISION_MODEL", "deepseek-flash")
 
 # 品类 → 比对维度提示（按目标款 category 注入；未命中用通用维度）。
 # 用「关键词组」匹配而非全等：category 常写成「蓝牙耳机」「POLO衫」等自然说法。

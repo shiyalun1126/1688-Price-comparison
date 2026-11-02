@@ -1013,7 +1013,7 @@ async function loadShops() {
   const list = await api('/api/shops');
   shops = Array.isArray(list) ? list : [];
   const sel = document.getElementById('shop-select');
-  sel.innerHTML = shops.map(s => `<option value="${s.id}">${s.name}${s.location?(' · '+s.location):''}</option>`).join('');
+  sel.innerHTML = shops.map(s => `<option value="${s.id}">${escapeHtml(s.name)}${s.location?escapeHtml(' · '+s.location):''}</option>`).join('');
   updatePipeline();
 }
 async function createShop() {

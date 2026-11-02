@@ -245,7 +245,10 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                 skipped += 1
                 continue
             m = _OFFER_ID_RE.search(url)
-            offer_id = m.group(1) if m else str(abs(hash(url)) % 10**10)
+            # 非 offer 链接的兜底 id 必须确定性（uuid5），
+            # 内建 hash() 每次进程随机化，重启后同一链接会被当新商品重复入库
+            offer_id = (m.group(1) if m
+                        else str(uuid.uuid5(uuid.NAMESPACE_URL, url).int % 10**10))
             title = (it.get("title") if isinstance(it, dict) else None) or ""
             price = (it.get("price") if isinstance(it, dict) else None) or None
             fetched = False

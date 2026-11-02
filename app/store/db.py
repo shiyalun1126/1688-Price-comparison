@@ -127,6 +127,12 @@ CREATE TABLE IF NOT EXISTS agent_plan (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_plan_target ON agent_plan(target_style_id);
+
+-- 轻量键值配置（如「当前选中的目标款」，重启不丢、多线程安全）
+CREATE TABLE IF NOT EXISTS app_setting (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -223,9 +229,10 @@ class Store:
         return [self._row_to_target_style(r) for r in rows]
 
     def delete_target_style(self, id: str) -> dict:
-        """删除目标款及其所有关联数据（商品/询价/报价/比价）。"""
+        """删除目标款及其所有关联数据（商品/询价/报价/比价/智能体记录）。"""
         counts: dict[str, int] = {}
-        for table in ("product", "inquiry", "quote", "comparison"):
+        for table in ("product", "inquiry", "quote", "comparison",
+                      "agent_run", "agent_plan"):
             cur = self._conn.execute(
                 f"DELETE FROM {table} WHERE target_style_id=?", (id,)
             )
@@ -239,6 +246,20 @@ class Store:
         counts["orphan_shop"] = cur.rowcount
         self._conn.commit()
         return counts
+
+    def get_setting(self, key: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT value FROM app_setting WHERE key=?", (key,)
+        ).fetchone()
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT INTO app_setting (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        self._conn.commit()
 
     @staticmethod
     def _row_to_target_style(row) -> TargetStyle:

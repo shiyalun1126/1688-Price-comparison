@@ -85,6 +85,15 @@ def _parse_rules(reply: str) -> dict:
     if lt:
         n = int(lt.group(1))
         result["lead_time_hours"] = n * 24 if lt.group(2) == "天" else n
+    # 阶梯价：「满100件4元」「100件以上4元」「100个起 3.5元」（大宗买家核心信息）
+    tiers = []
+    for tm in re.finditer(
+            r"(?:满\s*)?(\d{2,})\s*[件个只条套包]+\s*(?:以上|起)?[^\d¥￥]{0,4}[¥￥]?\s*(\d+(?:\.\d+)?)\s*元",
+            reply):
+        qty, unit_price = int(tm.group(1)), float(tm.group(2))
+        if qty > 0 and unit_price > 0 and (qty, unit_price) not in tiers:
+            tiers.append((qty, unit_price))
+    result["tiers"] = [{"qty": q, "price": p} for q, p in tiers]
     return result
 
 

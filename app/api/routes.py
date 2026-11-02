@@ -90,23 +90,24 @@ def list_targets(request: Request):
     return [_dump_target(t) for t in _store(request).list_target_styles()]
 
 
-# 当前选中的目标款（书签脚本动态查询用，避免把 ID 写死进书签）
-_CURRENT_TARGET_ID: str | None = None
+# 「当前选中的目标款」持久化在 app_setting 表（重启不丢、多 worker 安全），
+# 书签脚本动态查询用，避免把 ID 写死进书签
+_CURRENT_TARGET_KEY = "current_target_id"
 
 
 @router.get("/current-target")
 def get_current_target(request: Request):
     """返回当前应导入到的目标款。书签脚本每次点击时查询。"""
-    global _CURRENT_TARGET_ID
     store = _store(request)
     ts = store.list_target_styles()
+    saved = store.get_setting(_CURRENT_TARGET_KEY)
     # 若记录的当前款已不存在，退回第一个
-    if _CURRENT_TARGET_ID:
+    if saved:
         for t in ts:
-            if t.id == _CURRENT_TARGET_ID:
+            if t.id == saved:
                 return {"id": t.id, "name": t.name}
     if ts:
-        _CURRENT_TARGET_ID = ts[0].id
+        store.set_setting(_CURRENT_TARGET_KEY, ts[0].id)
         return {"id": ts[0].id, "name": ts[0].name}
     return {"id": None, "name": None}
 
@@ -118,11 +119,10 @@ class SetCurrentTarget(BaseModel):
 @router.post("/current-target")
 def set_current_target(request: Request, body: SetCurrentTarget):
     """设置当前目标款（页面选中时调用）。"""
-    global _CURRENT_TARGET_ID
     store = _store(request)
     if not store.get_target_style(body.target_id):
         return {"ok": False, "error": "目标款不存在"}
-    _CURRENT_TARGET_ID = body.target_id
+    store.set_setting(_CURRENT_TARGET_KEY, body.target_id)
     return {"ok": True, "target_id": body.target_id}
 
 
@@ -133,6 +133,9 @@ def delete_target(request: Request, target_id: str):
     if not store.get_target_style(target_id):
         return {"ok": False, "error": "目标款不存在"}
     counts = store.delete_target_style(target_id)
+    # 若删的正是「当前目标款」，清掉指针，下次查询自动回落到第一个
+    if store.get_setting(_CURRENT_TARGET_KEY) == target_id:
+        store.set_setting(_CURRENT_TARGET_KEY, "")
     return {"ok": True, "deleted": counts}
 
 
@@ -500,9 +503,11 @@ def list_inquiries(request: Request, target_id: str):
     products = store.list_products(target_id)
     prod_by_id = {p.id: p for p in products}
 
-    # 每个商品最新一条报价（比标价更真实，优先采用）
+    # 每个商品最新一条有效报价（>0；寒暄回复解析出的 ¥0 不算，比标价更真实，优先采用）
     quote_by_product: dict[str, tuple] = {}
     for q in sorted(store.list_quotes(target_id), key=lambda x: x.quoted_at):
+        if q.price is None or q.price <= 0:
+            continue
         quote_by_product[q.product_id] = (q.price, "quoted")
 
     view = []
@@ -632,12 +637,16 @@ def parse_inquiry_reply(request: Request, inquiry_id: str, body: InquiryReply,
     store.save_quote(quote)
 
     from app.models.enums import InquiryStatus
-    i.status = InquiryStatus.QUOTED
+    # 只有解析出有效价格（>0）才算「已报价」；寒暄/无价格回复保持「已回复」，
+    # 防止 ¥0.00 伪报价顶掉页面标价参与比价排序
+    has_price = quote.price is not None and quote.price > 0
+    i.status = InquiryStatus.QUOTED if has_price else InquiryStatus.REPLIED
     i.updated_at = datetime.now()
     store.save_inquiry(i)
 
     background.add_task(_auto_verify_quoted_product, store, i.target_style_id, i.product_id)
-    return {"quote": quote.model_dump(), "inquiry_id": i.id, "status": "quoted",
+    return {"quote": quote.model_dump(), "inquiry_id": i.id,
+            "status": "quoted" if has_price else "replied_no_price",
             "auto_verify": "scheduled"}
 
 

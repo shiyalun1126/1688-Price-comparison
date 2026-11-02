@@ -102,6 +102,20 @@ class Matcher:
             return True, ratio, f"属性一致度 {ratio:.0%}（{agree}/{len(tkeys)} 项命中）"
         return False, ratio, f"属性一致度不足 {ratio:.0%}，判为等效替代"
 
+    @staticmethod
+    def _resolve_img(p):
+        """把图片路径解析为本地文件路径。
+
+        兼容三种来源：绝对路径（UI/书签导入）、"/uploads/xxx"（auto_import 服务端落盘）。
+        """
+        from pathlib import Path
+
+        s = str(p)
+        if Path(s).is_absolute() or (len(s) > 1 and s[1] == ":"):
+            return Path(s)
+        root = Path(__file__).resolve().parents[2]   # 项目根
+        return root / "data" / s.lstrip("/")
+
     def verify(self, target: TargetStyle, product: Product) -> MatchOutcome:
         """判定单个候选。
 
@@ -109,24 +123,24 @@ class Matcher:
         视觉判定 different 直接排除；否则结合置信度分层。
         """
         # 主通道：视觉比对（需双方都有图且文件存在）
-        t_img = target.image_paths[0] if target.image_paths else None
-        p_img = product.image_paths[0] if product.image_paths else None
+        t_img = self._resolve_img(target.image_paths[0]) if target.image_paths else None
+        p_img = self._resolve_img(product.image_paths[0]) if product.image_paths else None
         if self._use_vision and t_img and p_img:
             from pathlib import Path
 
-            if not Path(t_img).exists() or not Path(p_img).exists():
+            if not t_img.exists() or not p_img.exists():
                 return MatchOutcome(
                     product.id, MatchStatus.CANDIDATE, None, 0.0,
                     "图片文件缺失，无法视觉比对（请重新上传图片）",
                 )
             try:
-                r = compare_images(t_img, p_img, category=target.category)
+                r = compare_images(str(t_img), str(p_img), category=target.category)
                 conf = float(r.get("confidence", 0.5) or 0)
                 # 低置信度灰区 → 换独立视角二次复核，收敛边界案例抖动；
                 # 复核本身失败不影响首判结果
                 if self._recheck_gray and RECHECK_LOW <= conf <= RECHECK_HIGH:
                     try:
-                        r2 = compare_images(t_img, p_img, category=target.category, recheck=True)
+                        r2 = compare_images(str(t_img), str(p_img), category=target.category, recheck=True)
                         r = merge_recheck(r, r2)
                     except Exception:
                         pass

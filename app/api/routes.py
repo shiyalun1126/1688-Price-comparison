@@ -7,13 +7,14 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.comparison.comparison import run_comparison
 from app.inquire.inquiry import build_inquiry_script, parse_quote
 from app.matcher.matcher import Matcher
 from app.models.entities import InquiryTask, Product, Shop, TargetStyle
+from app.models.enums import MatchStatus
 from app.uploads import UPLOAD_DIR as _UPLOAD_DIR_IMPORT
 from app.uploads import ensure_upload_dir, save_upload, to_web_paths
 
@@ -469,9 +470,26 @@ def _inquiry_view(i, product, shop):
     }
 
 
+_TIER_RANK = {"exact": 0, "equivalent": 1, "unverified": 2, "rejected": 3}
+
+
+def _inquiry_sort_key(v: dict):
+    """与比价结论一致的排序：核验分层优先，同层价格升序（无价格排最后）。"""
+    price = v.get("price")
+    return (
+        _TIER_RANK.get(v.get("tier") or "unverified", 2),
+        1 if price is None else 0,
+        price if price is not None else 0,
+    )
+
+
 @router.get("/targets/{target_id}/inquiries")
 def list_inquiries(request: Request, target_id: str):
-    """列出某目标款的所有询价任务（含未创建询价的候选商品）。"""
+    """列出某目标款的所有询价任务（含未创建询价的候选商品）。
+
+    排序与智能体控制台/比价结论一致：完全同款 → 等效替代 → 未核验 → 已排除，
+    同层内按有效价格（有报价用报价，否则用标价）升序。
+    """
     store = _store(request)
     target = store.get_target_style(target_id)
     if not target:
@@ -480,22 +498,45 @@ def list_inquiries(request: Request, target_id: str):
     inq_by_product = {i.product_id: i for i in inquiries}
     shops = {s.id: s for s in store.list_shops()}
     products = store.list_products(target_id)
+    prod_by_id = {p.id: p for p in products}
+
+    # 每个商品最新一条报价（比标价更真实，优先采用）
+    quote_by_product: dict[str, tuple] = {}
+    for q in sorted(store.list_quotes(target_id), key=lambda x: x.quoted_at):
+        quote_by_product[q.product_id] = (q.price, "quoted")
 
     view = []
     # 已有询价任务的
     for i in inquiries:
-        view.append(_inquiry_view(i, next((p for p in products if p.id == i.product_id), None),
-                                   shops.get(i.shop_id)))
+        v = _inquiry_view(i, prod_by_id.get(i.product_id), shops.get(i.shop_id))
+        view.append(_attach_match_info(v, prod_by_id.get(i.product_id), quote_by_product))
     # 还没询价的商品
     for p in products:
         if p.id not in inq_by_product:
-            view.append({
+            v = {
                 "id": None, "product_id": p.id, "shop_id": p.shop_id,
                 "shop_name": shops.get(p.shop_id).name if shops.get(p.shop_id) else p.shop_id,
                 "title": p.title, "script": "", "status": "pending",
                 "buyer_quantity": None, "created_at": None,
-            })
+            }
+            view.append(_attach_match_info(v, p, quote_by_product))
+    view.sort(key=_inquiry_sort_key)
     return view
+
+
+def _attach_match_info(v: dict, p, quote_by_product: dict) -> dict:
+    """给询价视图补上核验分层 + 有效价格（供排序与前端展示）。"""
+    tier = None
+    if p is not None:
+        tier = p.match_tier.value if p.match_tier else None
+        if p.match_status == MatchStatus.REJECTED:
+            tier = "rejected"
+    v["tier"] = tier
+    v["price"], v["price_source"] = quote_by_product.get(
+        v["product_id"],
+        (p.listed_price if p is not None else None, "listed" if (p and p.listed_price is not None) else None),
+    )
+    return v
 
 
 @router.post("/inquiries")
@@ -543,9 +584,38 @@ def update_inquiry_status(request: Request, inquiry_id: str, body: InquiryStatus
     return {"id": i.id, "status": i.status.value}
 
 
+def _auto_verify_quoted_product(store, target_id: str, product_id: str) -> None:
+    """后台任务：卖家已给出真实报价的商品，若尚未过视觉核验，自动补跑单商品匹配。
+
+    无图商品保持 candidate（视觉无法判定，靠报价本身核验），有图则升级判定。
+    已判定过的不重跑（避免视觉抖动覆盖结论）。任何异常只打日志，不影响主流程。
+    """
+    try:
+        target = store.get_target_style(target_id)
+        product = next((p for p in store.list_products(target_id) if p.id == product_id), None)
+        if not target or not product:
+            return
+        if product.match_status in (MatchStatus.VERIFIED_SAME, MatchStatus.VERIFIED_EQUIVALENT,
+                                    MatchStatus.REJECTED):
+            return
+        cls = Matcher().run(target, [product], max_workers=1)
+        outcomes = cls.exact + cls.equivalent + cls.rejected + cls.candidate
+        for m in outcomes:
+            product.match_status = m.status
+            product.match_tier = m.tier
+            product.match_score = m.confidence
+            product.match_reason = m.reason
+            product.matched_at = datetime.now()
+            store.save_product(product)
+            print(f"[auto-verify] {product_id[:8]} → {m.status.value} ({m.confidence:.2f})")
+    except Exception as e:
+        print(f"[auto-verify] 失败 product={product_id[:8]}: {e}")
+
+
 @router.post("/inquiries/{inquiry_id}/parse-reply")
-def parse_inquiry_reply(request: Request, inquiry_id: str, body: InquiryReply):
-    """贴入卖家回复 → 解析报价 → 落库 → 任务置为已报价。"""
+def parse_inquiry_reply(request: Request, inquiry_id: str, body: InquiryReply,
+                        background: BackgroundTasks):
+    """贴入卖家回复 → 解析报价 → 落库 → 任务置为已报价 → 后台自动核验该商品。"""
     store = _store(request)
     i = store.get_inquiry(inquiry_id)
     if not i:
@@ -566,7 +636,9 @@ def parse_inquiry_reply(request: Request, inquiry_id: str, body: InquiryReply):
     i.updated_at = datetime.now()
     store.save_inquiry(i)
 
-    return {"quote": quote.model_dump(), "inquiry_id": i.id, "status": "quoted"}
+    background.add_task(_auto_verify_quoted_product, store, i.target_style_id, i.product_id)
+    return {"quote": quote.model_dump(), "inquiry_id": i.id, "status": "quoted",
+            "auto_verify": "scheduled"}
 
 
 # ---- 比价 -----------------------------------------------------------------
@@ -586,6 +658,104 @@ def comparison(request: Request, target_id: str, refresh: bool = False):
     return result.model_dump()
 
 
+_TIER_CN = {"exact": "完全同款", "equivalent": "等效替代", "unverified": "未核验", "rejected": "已排除"}
+_STATUS_CN = {"pending": "未询价", "draft": "话术已备", "sent": "已发送",
+              "replied": "已回复", "quoted": "已报价", "closed": "已关闭"}
+
+
+def _fmt_lead(hours) -> str:
+    if not hours:
+        return "—"
+    return f"{hours}h" if hours < 48 else f"{hours / 24:.0f}天"
+
+
+@router.get("/targets/{target_id}/report")
+def build_report(request: Request, target_id: str):
+    """一键生成 Markdown 比价报告（复用带指纹缓存的比价结论，不触发 LLM）。"""
+    store = _store(request)
+    target = store.get_target_style(target_id)
+    if not target:
+        return {"error": "目标款不存在"}
+
+    result = run_comparison(store, target)   # 命中缓存，演示路径零等待
+    shops = {s.id: s for s in store.list_shops()}
+    products = {p.id: p for p in store.list_products(target_id)}
+    inquiries = store.list_inquiries(target_id)
+    inq_by_product = {i.product_id: i for i in inquiries}
+    quotes = store.list_quotes(target_id)
+    quote_by_product: dict[str, object] = {}
+    for q in sorted(quotes, key=lambda x: x.quoted_at):
+        quote_by_product[q.product_id] = q
+
+    L: list[str] = []
+    L.append(f"# 比价报告：{target.name}")
+    meta = [target.category or "未分类"]
+    if target.reference_price:
+        meta.append(f"参考价 ¥{target.reference_price:.2f}")
+    meta.append(f"生成时间 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    L.append(f"> {' · '.join(meta)}")
+    L.append("")
+
+    L.append("## 一、比价结论")
+    L.append(f"**综述**：{result.summary}")
+    L.append(f"**建议**：{result.recommendation}")
+    if result.negotiation_script:
+        L.append("**议价话术**：")
+        L.append("```")
+        L.append(result.negotiation_script)
+        L.append("```")
+    L.append("")
+
+    L.append("## 二、价格明细")
+    if result.rows:
+        L.append("| # | 店铺 | 商品 | 价格 | 来源 | 核验 | MOQ | 含税 | 现货 | 时效 |")
+        L.append("|---|------|------|------|------|------|-----|------|------|------|")
+        for idx, r in enumerate(result.rows, 1):
+            price = f"¥{r['price']:.2f}" if r.get("price") is not None else "—"
+            src = "报价" if r.get("price_source") == "quoted" else "标价"
+            stock = r.get("stock_status", "")
+            stock_cn = {"in_stock": "现货", "pre_sale": "预售", "custom": "定制"}.get(stock, "—" if stock else "—")
+            tax_cn = {"included": "含税", "excluded": "不含税"}.get(r.get("tax"), "—")
+            L.append(f"| {idx} | {r['shop_name']} | {(r['title'] or '')[:24]} | {price} | {src} "
+                     f"| {_TIER_CN.get(r['tier'], '未核验')} | {r.get('moq') or '—'} | {tax_cn} | {stock_cn} | {_fmt_lead(r.get('lead_time_hours'))} |")
+    else:
+        L.append("（暂无可比数据）")
+    L.append("")
+
+    L.append("## 三、询价进度")
+    if inquiries:
+        L.append("| 店铺 | 商品 | 状态 |")
+        L.append("|------|------|------|")
+        for i in inquiries:
+            p = products.get(i.product_id)
+            L.append(f"| {shops.get(i.shop_id).name if shops.get(i.shop_id) else i.shop_id} "
+                     f"| {(p.title if p else '')[:24]} | {_STATUS_CN.get(i.status.value, i.status.value)} |")
+        n_quoted = sum(1 for i in inquiries if i.status.value == "quoted")
+        L.append("")
+        L.append(f"共 {len(inquiries)} 家询价，已拿到报价 {n_quoted} 家。")
+    else:
+        L.append("（尚未发起询价）")
+    L.append("")
+
+    real_quotes = [q for q in quote_by_product.values()]
+    if real_quotes:
+        L.append("## 四、报价汇总（卖家回复原文解析）")
+        L.append("| 店铺 | 报价 | MOQ | 含税 | 现货 | 时效 | 说明 |")
+        L.append("|------|------|-----|------|------|------|------|")
+        pmap = products
+        for q in real_quotes:
+            p = pmap.get(q.product_id)
+            shop = shops.get(q.shop_id)
+            tax_cn = {"included": "含税", "excluded": "不含税", "unknown": "未知"}.get(q.tax.value, "—")
+            stock_cn = {"in_stock": "现货", "pre_sale": "预售", "custom": "定制", "unknown": "未知"}.get(q.stock_status.value, "—")
+            price_cn = f"¥{q.price:.2f}" if q.price is not None else "—"
+            L.append(f"| {shop.name if shop else q.shop_id} | {price_cn} | {q.moq or '—'} | {tax_cn} "
+                     f"| {stock_cn} | {_fmt_lead(q.lead_time_hours)} | {q.condition_note or '—'} |")
+        L.append("")
+
+    return {"target": target.name, "markdown": "\n".join(L)}
+
+
 # ---- 智能体（ReAct Agent）--------------------------------------------------
 class AgentRequest(BaseModel):
     goal: str
@@ -601,6 +771,14 @@ def agent_run(request: Request, body: AgentRequest):
     if not body.goal.strip():
         return {"error": "goal 不能为空"}
     return run_agent(store, body.goal, body.target_id)
+
+
+@router.get("/agent/plan")
+def agent_plan(request: Request, target_id: str):
+    """当前目标款进行中的采购计划（长任务规划）。"""
+    store = _store(request)
+    plan = store.get_active_plan(target_id)
+    return plan.model_dump(mode="json") if plan else {"active": False}
 
 
 @router.get("/agent/history")

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.models.entities import (
+    AgentPlanRecord,
     AgentRunRecord,
     ComparisonResult,
     InquiryTask,
@@ -114,6 +115,18 @@ CREATE TABLE IF NOT EXISTS agent_run (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_run_target ON agent_run(target_style_id);
+
+-- 智能体长任务计划：跨轮次任务分解与进度跟踪
+CREATE TABLE IF NOT EXISTS agent_plan (
+    id TEXT PRIMARY KEY,
+    target_style_id TEXT,
+    goal TEXT NOT NULL,
+    steps TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_plan_target ON agent_plan(target_style_id);
 """
 
 
@@ -455,3 +468,41 @@ class Store:
             cur = self._conn.execute("DELETE FROM agent_run")
         self._conn.commit()
         return cur.rowcount
+
+    # ---- agent_plan（长任务计划）-------------------------------------------
+    def save_agent_plan(self, p: AgentPlanRecord) -> None:
+        """保存计划；同目标款只保留一个 active，新计划建立时旧 active 置为 superseded。"""
+        if p.status == "active" and p.target_style_id:
+            self._conn.execute(
+                "UPDATE agent_plan SET status='superseded' "
+                "WHERE target_style_id=? AND status='active' AND id<>?",
+                (p.target_style_id, p.id),
+            )
+        self._conn.execute(
+            """INSERT OR REPLACE INTO agent_plan
+               (id, target_style_id, goal, steps, status, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                p.id, p.target_style_id, p.goal,
+                json.dumps(p.steps, ensure_ascii=False),
+                p.status, _iso(p.created_at), _iso(p.updated_at),
+            ),
+        )
+        self._conn.commit()
+
+    def get_active_plan(self, target_style_id: str) -> Optional[AgentPlanRecord]:
+        """取某目标款当前进行中的计划（无则 None）。"""
+        row = self._conn.execute(
+            "SELECT * FROM agent_plan WHERE target_style_id=? AND status='active' "
+            "ORDER BY created_at DESC LIMIT 1",
+            (target_style_id,),
+        ).fetchone()
+        if not row:
+            return None
+        from datetime import datetime
+        return AgentPlanRecord(
+            id=row["id"], target_style_id=row["target_style_id"], goal=row["goal"],
+            steps=_loads(row["steps"], []), status=row["status"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )

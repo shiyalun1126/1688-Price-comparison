@@ -124,14 +124,21 @@ if(PAGE_TYPE==='search'){
     if(!newId){return;}
     TARGET_ID=newId;
   }
-  var title=txt($('h1'))||document.title.replace(/[-_].*$/,'').trim();
+  var h1txt=txt($('h1'));
+  var h1IsCompany=/(有限公司|实业|工贸|贸易|商行|日用品|服饰|科技)/.test(h1txt);
+  var ogEl=$('meta[property="og:title"]');
+  var dt=document.title.replace(/[-_|–—].*$/,'').replace(/(阿里巴巴|1688).*/,'').trim();
+  var cm=document.documentElement.innerHTML.match(/"companyName"\\s*:\\s*"([^"]{2,40})"/);
+  var company=(h1IsCompany&&h1txt)||(cm&&cm[1])||txt($('.company-name'))||'';
+  var title=(!h1IsCompany&&h1txt)?h1txt:(ogEl&&ogEl.content&&ogEl.content.trim())||dt||'1688商品';
   var img='';
   $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
   var price=null;
   var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
   if(pm)price=parseFloat(pm[1]);
   var shopRow=$('.offer-shop-row')||$('.company-name')||$('.shop-name');
-  var shopName=txt(shopRow)||'1688店铺';
+  var um=location.href.match(/[?&]uid=([^&]+)/);
+  var shopName=um?decodeURIComponent(um[1]):(company||txt(shopRow)||'1688店铺');
   var offerId=(location.href.match(/offer\\/(\\d+)/)||[])[1]||'';
   var url='http://detail.1688.com/offer/'+offerId+'.html';
   fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({

@@ -551,13 +551,13 @@ table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--c
                 <div class="target-meta" id="target-meta">创建或切换一个目标款，开始比价工作流</div>
               </div>
               <div class="target-actions">
-                <button type="button" class="btn default sm" onclick="toggleSwitcher(true)">切换</button>
+                <button type="button" class="btn default sm" id="btn-switch-zone" onclick="toggleSwitcher(true)">切换</button>
               </div>
             </div>
             <div class="nt-form" id="new-target-form" hidden>
               <div class="nt-grid">
                 <div class="field"><label>名称</label><input id="ts-name" placeholder="例：280g 纯棉落肩卫衣-藏青"></div>
-                <div class="field"><label>品类</label><input id="ts-cat" placeholder="衬衫/卫衣/牛仔裤" value="衬衫"></div>
+                <div class="field"><label>品类</label><input id="ts-cat" placeholder="例：衬衫 / 卫衣 / 保温杯，可留空"></div>
                 <div class="field"><label>参考价（元，可选）</label><input id="ts-ref" type="number" step="0.01"></div>
                 <div class="field"><label>目标款图片</label><input id="ts-image" type="file" accept="image/*"></div>
                 <div class="field span2"><label>文字描述（面料 / 克重 / 版型 / 尺码）</label><textarea id="ts-desc" rows="2" placeholder="纯棉 280g 落肩 宽松版型 S-XXL"></textarea></div>
@@ -580,6 +580,10 @@ table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--c
                 <button type="button" class="btn default" id="btn-export" onclick="exportComparison()" disabled>
                   <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v8m0 0L4 6.5m3 3 3-3M2 11.5h10"/></svg>
                   导出 Excel
+                </button>
+                <button type="button" class="btn default" id="btn-report" onclick="downloadReport()">
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5h6l2.5 2.5v8.5H3z"/><path d="M9 1.5V4h2.5M5 7h4M5 9.5h4"/></svg>
+                  导出报告
                 </button>
               </div>
             </div>
@@ -619,6 +623,9 @@ table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--c
             <div class="zone-head">
               <div class="zone-title"><span class="zone-index">04</span>询价工作台</div>
               <div class="zone-actions">
+                <input id="inquiry-search" type="search" placeholder="搜索店铺 / 商品名…" autocomplete="off"
+                       style="width:180px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--paper);font:inherit;font-size:12px;color:var(--ink)"
+                       oninput="renderWorkbench()">
                 <button type="button" class="btn default sm" onclick="refreshInquiries()">
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 7A5.5 5.5 0 1 1 7 1.5c2 0 3.7 1 4.7 2.5M7 4v3l2 1"/><path d="M11.7 1.5v3h-3" transform="translate(0 .5)"/></svg>
                   刷新列表
@@ -935,7 +942,9 @@ function toggleSwitcher(force) {
 document.addEventListener('click', e => {
   const pop = document.getElementById('switcher-pop');
   if (!pop || !pop.classList.contains('open')) return;
-  if (!e.target.closest('#switcher-pop') && !e.target.closest('#btn-switch')) toggleSwitcher(false);
+  // 点击弹层内部、顶栏开关按钮、或分区里的「切换」按钮时，不关闭
+  if (!e.target.closest('#switcher-pop') && !e.target.closest('#btn-switch')
+      && !e.target.closest('#btn-switch-zone')) toggleSwitcher(false);
 });
 
 // ================= 流程步骤条 =================
@@ -967,6 +976,10 @@ async function updatePipeline() {
 
   const sp = document.getElementById('stat-products');
   if (sp) sp.textContent = products.length;
+
+  // 店铺数随当前目标款联动：统计该目标款下候选商品涉及的卖家数
+  const ss = document.getElementById('stat-shops');
+  if (ss) ss.textContent = new Set(products.map(p => p.shop_id).filter(Boolean)).size;
 }
 document.querySelectorAll('.pipe-step').forEach(el => {
   el.addEventListener('click', () => {
@@ -981,8 +994,6 @@ async function loadShops() {
   shops = Array.isArray(list) ? list : [];
   const sel = document.getElementById('shop-select');
   sel.innerHTML = shops.map(s => `<option value="${s.id}">${s.name}${s.location?(' · '+s.location):''}</option>`).join('');
-  const statEl = document.getElementById('stat-shops');
-  if (statEl) statEl.textContent = shops.length || 0;
   updatePipeline();
 }
 async function createShop() {
@@ -1109,7 +1120,28 @@ const TOOL_CN = {
   inquiry_script: '生成询价话术',
   make_search_link: '生成1688搜索链接',
   import_products: '导入商品链接',
+  plan_search: '规划搜索策略',
+  auto_import: '浏览器自动搜索导入',
+  create_plan: '创建采购计划',
+  get_plan: '查看计划进度',
+  update_plan_step: '更新计划进度',
 };
+
+const PLAN_MARK = { done: '✅', in_progress: '▶️', blocked: '⚠️', pending: '⬜' };
+
+function renderPlanBlock(plan) {
+  if (!plan || !plan.steps || !plan.steps.length) return '';
+  const done = plan.steps.filter(s => s.status === 'done').length;
+  let html = `<div class="trace-step"><div class="rnd">PLAN</div>
+    <div class="trace-thought"><span class="trace-label">采购计划</span>${escapeHtml(plan.goal)}
+    <span style="opacity:.7">（${done}/${plan.steps.length}）${plan.status === 'done' ? ' · 已全部完成' : ''}</span></div>`;
+  for (const s of plan.steps) {
+    const mark = PLAN_MARK[s.status] || '⬜';
+    const note = s.note ? ` <span style="opacity:.6">${escapeHtml(s.note)}</span>` : '';
+    html += `<div class="trace-args">${mark} 步骤${s.index}：${escapeHtml(s.action)}${note}</div>`;
+  }
+  return html + `</div>`;
+}
 
 // 智能体对话历史（持久化在 agent_run 表，刷新/重开都在）
 async function loadAgentHistory() {
@@ -1194,6 +1226,9 @@ async function runAgent() {
       }
     }
     html += `</div>`;
+  }
+  if (r.plan) {
+    html += renderPlanBlock(r.plan);
   }
   if (r.final_answer) {
     html += `<div class="agent-final"><span class="trace-label">结论</span><div class="final-body">${renderMarkdown(r.final_answer)}</div></div>`;
@@ -1320,6 +1355,21 @@ async function exportComparison() {
   URL.revokeObjectURL(a.href);
 }
 
+async function downloadReport() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const r = await api(`/api/targets/${currentTargetId}/report`);
+  if (!r || r.error) return alert('生成失败：' + (r && r.error ? r.error : '未知错误'));
+  const blob = new Blob([r.markdown], {type: 'text/markdown;charset=utf-8'});
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = URL.createObjectURL(blob);
+  a.download = `比价报告_${(r.target || '目标款').replace(/[\\/:*?"<>|]/g, '_')}_${ts}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
 const TIER_CN = {exact:'✅ 完全同款', equivalent:'⚠️ 等效替代', unverified:'· 未核验', rejected:'· 已排除'};
 const SRC_CN = {listed:'标价', quoted:'报价'};
 const TAX_CN = {included:'含税', excluded:'不含税', unknown:'含税未知'};
@@ -1398,11 +1448,49 @@ async function refreshInquiries() {
   renderWorkbench();
   updatePipeline();
 }
+const INQ_TIER_CN = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
+const INQ_TIER_STYLE = {
+  exact:      {bg:'var(--accent, #b8860b)', fg:'#fff'},
+  equivalent: {bg:'transparent', fg:'var(--accent-deep, #8a6508)', bd:'1px solid var(--accent, #b8860b)'},
+  unverified: {bg:'transparent', fg:'var(--muted, #888)', bd:'1px solid var(--border, #ccc)'},
+  rejected:   {bg:'transparent', fg:'var(--muted, #888)', bd:'1px dashed var(--border, #ccc)'}
+};
+function tierBadge(q) {
+  const out = [];
+  const mk = (bg, fg, bd, label, title) =>
+    `<span title="${title}" style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;line-height:1.7;white-space:nowrap;background:${bg};color:${fg};border:${bd || 'none'};vertical-align:middle">${label}</span>`;
+  const t = q.tier || 'unverified';
+  if (t === 'exact' || t === 'equivalent') {
+    const s = INQ_TIER_STYLE[t];
+    out.push(mk(s.bg, s.fg, s.bd, INQ_TIER_CN[t], '视觉核验分层，与比价结论一致'));
+  }
+  if (q.price_source === 'quoted') {
+    out.push(mk('var(--leaf-soft, #dcefe2)', 'var(--leaf-deep, #2e7d52)', '1px solid var(--leaf-deep, #2e7d52)',
+                '已报价', '卖家已回复真实报价，价格经询价核验'));
+  } else if (t !== 'exact' && t !== 'equivalent') {
+    const s = INQ_TIER_STYLE[t] || INQ_TIER_STYLE.unverified;
+    out.push(mk(s.bg, s.fg, s.bd, INQ_TIER_CN[t] || '未核验', '视觉核验分层，与比价结论一致'));
+  }
+  return out.join(' ');
+}
+function tierPrice(q) {
+  if (q.price == null) return '<span class="muted">—</span>';
+  const src = q.price_source === 'quoted' ? '<span class="muted" style="font-size:11px">报价</span>' : '<span class="muted" style="font-size:11px">标价</span>';
+  return `<span style="font-variant-numeric:tabular-nums">¥${Number(q.price).toFixed(2)}</span> ${src}`;
+}
 function renderWorkbench() {
   const el = document.getElementById('workbench');
   if (!inquiries.length) { el.innerHTML = '<div class="empty">暂无候选商品。先在「02 候选商品」添加，或从 1688 书签导入。</div>'; return; }
-  let html = '<table><thead><tr><th>店铺</th><th>商品</th><th>状态</th><th>话术 / 回复</th><th>操作</th></tr></thead><tbody>';
-  for (const q of inquiries) {
+  const kw = (document.getElementById('inquiry-search')?.value || '').trim().toLowerCase();
+  const rows = kw
+    ? inquiries.filter(q => (q.shop_name || '').toLowerCase().includes(kw) || (q.title || '').toLowerCase().includes(kw))
+    : inquiries;
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty">没有匹配「${escapeHtml(kw)}」的商家，<a href="#" onclick="document.getElementById('inquiry-search').value='';renderWorkbench();return false;" style="color:var(--accent-deep,var(--accent))">清除搜索</a></div>`;
+    return;
+  }
+  let html = '<table><thead><tr><th>店铺</th><th>商品</th><th>核验 · 价格</th><th>状态</th><th>话术 / 回复</th><th>操作</th></tr></thead><tbody>';
+  for (const q of rows) {
     const st = STATUS_CN[q.status] || q.status;
     let cell = '';
     let actions = '';
@@ -1421,11 +1509,13 @@ function renderWorkbench() {
         actions = '<span class="muted">已完成</span>';
       }
     }
-    html += `<tr><td>${escapeHtml(q.shop_name||'')}</td><td>${escapeHtml(q.title||'')}</td>`
+    html += `<tr><td>${tierBadge(q)} ${escapeHtml(q.shop_name||'')}</td><td>${escapeHtml(q.title||'')}</td>`
+          + `<td style="white-space:nowrap">${tierPrice(q)}</td>`
           + `<td><span class="status ${q.status}">${st}</span></td>`
           + `<td>${cell}</td><td style="white-space:nowrap">${actions}</td></tr>`;
   }
   html += '</tbody></table>';
+  if (kw) html += `<p class="muted" style="margin:8px 2px 0;font-size:12px">搜索命中 ${rows.length} / ${inquiries.length} 条（列表默认按视觉核验分层与价格排序）</p>`;
   el.innerHTML = html;
 }
 
@@ -1609,14 +1699,21 @@ if(PAGE_TYPE==='search'){
     if(!newId){return;}
     TARGET_ID=newId;
   }
-  var title=txt($('h1'))||document.title.replace(/[-_].*$/,'').trim();
+  var h1txt=txt($('h1'));
+  var h1IsCompany=/(有限公司|实业|工贸|贸易|商行|日用品|服饰|科技)/.test(h1txt);
+  var ogEl=$('meta[property="og:title"]');
+  var dt=document.title.replace(/[-_|–—].*$/,'').replace(/(阿里巴巴|1688).*/,'').trim();
+  var cm=document.documentElement.innerHTML.match(/"companyName"\\s*:\\s*"([^"]{2,40})"/);
+  var company=(h1IsCompany&&h1txt)||(cm&&cm[1])||txt($('.company-name'))||'';
+  var title=(!h1IsCompany&&h1txt)?h1txt:(ogEl&&ogEl.content&&ogEl.content.trim())||dt||'1688商品';
   var img='';
   $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
   var price=null;
   var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
   if(pm)price=parseFloat(pm[1]);
   var shopRow=$('.offer-shop-row')||$('.company-name')||$('.shop-name');
-  var shopName=txt(shopRow)||'1688店铺';
+  var um=location.href.match(/[?&]uid=([^&]+)/);
+  var shopName=um?decodeURIComponent(um[1]):(company||txt(shopRow)||'1688店铺');
   var offerId=(location.href.match(/offer\\/(\\d+)/)||[])[1]||'';
   var url='http://detail.1688.com/offer/'+offerId+'.html';
   fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({

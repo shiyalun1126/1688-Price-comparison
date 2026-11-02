@@ -37,6 +37,10 @@ def _retest(store, target) -> tuple[int, int, int, list[str]]:
     for p in prods:
         if not p.image_paths:
             continue
+        if p.match_status.value == "candidate":
+            # candidate = 从未成功核验的占位（新导入/历史图片缺失），无判定基线，
+            # 首次真实核验不算「翻转」，不纳入稳定性统计
+            continue
         m = new.get(p.id)
         if not m:
             continue

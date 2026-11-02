@@ -142,3 +142,19 @@ class AgentRunRecord(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     created_at: datetime = Field(default_factory=datetime.now)
+
+
+class AgentPlanRecord(BaseModel):
+    """跨轮次的采购任务计划（长任务规划的持久化载体）。
+
+    steps 元素结构：{index, action, detail, status, note}
+    status 取值：pending / in_progress / done / blocked
+    """
+
+    id: str
+    target_style_id: Optional[str] = None
+    goal: str
+    steps: list[dict] = Field(default_factory=list)
+    status: str = "active"  # active / done / superseded
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

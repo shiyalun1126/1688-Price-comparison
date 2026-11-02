@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -79,19 +81,38 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
             ],
         }
 
-    def match_products(target_id: str) -> dict:
-        """对目标款的候选商品执行视觉匹配（增量，已判定的会复用）。"""
+    def match_products(target_id: str, force: bool = False) -> dict:
+        """对目标款的候选商品执行视觉匹配。
+
+        默认增量：已判定且图片未变的商品直接复用结果，不重复烧视觉调用；
+        force=True 时全量重跑。无图商品每次都会走规则核验（本地、很快）。
+        """
         t = store.get_target_style(target_id)
         if not t:
             return {"error": "目标款不存在"}
         prods = store.list_products(target_id)
         if not prods:
             return {"error": "该目标款下没有候选商品，请先导入"}
+        if force:
+            to_match = list(prods)
+        else:
+            # 与 API 路由的增量口径一致：有图 + 已判定 + 匹配时间存在 → 复用
+            to_match = [
+                p for p in prods
+                if not (p.image_paths and p.match_status != MatchStatus.CANDIDATE
+                        and p.matched_at is not None)
+            ]
+        if not to_match:
+            return {
+                "本次新匹配": 0,
+                "已复用": len(prods),
+                "提示": "所有候选均已核验过（增量模式），可直接 compare_prices 出比价结论。",
+            }
         matcher = Matcher()
-        cls = matcher.run(t, prods, max_workers=8)
+        cls = matcher.run(t, to_match, max_workers=8)
         # 回写
         from datetime import datetime
-        pmap = {p.id: p for p in prods}
+        pmap = {p.id: p for p in to_match}
         now = datetime.now()
         for m in cls.exact + cls.equivalent + cls.rejected + cls.candidate:
             p = pmap.get(m.product_id)
@@ -103,13 +124,13 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                 p.matched_at = now
                 store.save_product(p)
         return {
+            "本次新匹配": len(to_match),
+            "已复用": len(prods) - len(to_match),
             "完全同款": len(cls.exact),
             "等效替代": len(cls.equivalent),
             "已排除": len(cls.rejected),
-            "未核验": len(cls.candidate),
-            "同款样例": [
-                {"店铺": m.reason[:60], "状态": m.status.value} for m in cls.exact[:3]
-            ],
+            "仍未核验": len(cls.candidate),
+            "下一步": "匹配完成，可调用 compare_prices 生成比价结论。",
         }
 
     def compare_prices(target_id: str) -> dict:
@@ -157,7 +178,7 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
         # 把关键属性值也拼进去，提高召回精度（取前 3 个非空值）
         attr_vals = [v for v in (t.attributes or {}).values() if v and len(v) <= 12][:3]
         full_kws = " ".join([kws] + attr_vals).strip()
-        url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(full_kws)}"
+        url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={quote(full_kws.encode('gbk'))}"
         return {
             "搜索链接": url,
             "关键词": full_kws,
@@ -321,7 +342,7 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
 
         for q in queries:
             q["url"] = ("https://s.1688.com/selloffer/offer_search.htm?keywords="
-                        + quote(q["kw"]))
+                        + quote(q["kw"].encode("gbk")))
 
         return {
             "目标款": t.name,
@@ -333,7 +354,236 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
             "注意": "1688 有严格反爬，服务端无法自动检索，因此采用人在环模式。",
         }
 
+    # ---- 长任务规划：跨轮次的采购计划 ---------------------------------------
+
+    _PLAN_STATUS = {"pending", "in_progress", "done", "blocked"}
+
+    def create_plan(goal: str, steps: list) -> dict:
+        """把多阶段采购目标分解为持久化计划（同目标款只保留一个进行中的计划）。"""
+        t = _current_target()
+        if not steps:
+            return {"error": "steps 不能为空，请给出有序步骤"}
+        norm = []
+        for i, s in enumerate(steps[:10]):   # 上限 10 步，防失控
+            if isinstance(s, str):
+                norm.append({"index": i, "action": s[:60], "detail": "", "status": "pending", "note": ""})
+            elif isinstance(s, dict) and s.get("action"):
+                norm.append({
+                    "index": i,
+                    "action": str(s["action"])[:60],
+                    "detail": str(s.get("detail", ""))[:120],
+                    "status": "pending",
+                    "note": "",
+                })
+        if not norm:
+            return {"error": "steps 里没有有效步骤（每步需要 action 字段）"}
+        from datetime import datetime as _dt
+        from app.models.entities import AgentPlanRecord
+        rec = AgentPlanRecord(
+            id=f"plan-{uuid.uuid4().hex[:12]}",
+            target_style_id=t.id if t else None,
+            goal=goal[:200],
+            steps=norm,
+            created_at=_dt.now(), updated_at=_dt.now(),
+        )
+        store.save_agent_plan(rec)
+        return {
+            "plan_id": rec.id,
+            "目标": rec.goal,
+            "步骤数": len(norm),
+            "计划": norm,
+            "说明": ("计划已持久化，之后每次运行会自动带上进度。每完成一个阶段"
+                     "（如核验完成、拿到某家报价）就调用 update_plan_step 更新状态；"
+                     "全部完成后计划自动关闭。"),
+        }
+
+    def get_plan() -> dict:
+        """查看当前目标款进行中的采购计划与步骤进度。"""
+        t = _current_target()
+        plan = store.get_active_plan(t.id) if t else None
+        if not plan:
+            return {"无进行中的计划": True, "提示": "如目标需要多轮完成，可用 create_plan 创建。"}
+        done = sum(1 for s in plan.steps if s.get("status") == "done")
+        return {
+            "plan_id": plan.id,
+            "目标": plan.goal,
+            "进度": f"{done}/{len(plan.steps)}",
+            "步骤": plan.steps,
+        }
+
+    def update_plan_step(step_index: int, status: str = "done", note: str = "") -> dict:
+        """更新计划某一步的状态（pending/in_progress/done/blocked），全部完成则计划关闭。"""
+        t = _current_target()
+        plan = store.get_active_plan(t.id) if t else None
+        if not plan:
+            return {"error": "当前目标款没有进行中的计划"}
+        status = status if status in _PLAN_STATUS else "done"
+        target_step = next((s for s in plan.steps if s.get("index") == step_index), None)
+        if target_step is None:
+            valid = [s["index"] for s in plan.steps]
+            return {"error": f"步骤 {step_index} 不存在，有效索引：{valid}"}
+        target_step["status"] = status
+        if note:
+            target_step["note"] = str(note)[:120]
+        done = sum(1 for s in plan.steps if s["status"] == "done")
+        if done == len(plan.steps):
+            plan.status = "done"
+        from datetime import datetime as _dt
+        plan.updated_at = _dt.now()
+        store.save_agent_plan(plan)
+        return {
+            "plan_id": plan.id,
+            "已更新": {"index": step_index, "status": status, "note": target_step["note"]},
+            "总进度": f"{done}/{len(plan.steps)}",
+            "计划状态": plan.status,
+        }
+
+    # ---- 浏览器自动导入：CDP 接管真实浏览器抓搜索结果 -----------------------
+
+    def auto_import(keywords: str, max_items: int = 20) -> dict:
+        """在用户已登录的抓取浏览器里自动搜索 1688 并导入候选商品（含真实店铺名与主图）。
+
+        前提：用户先用 scripts/start_browser.py 启动抓取浏览器并登录过 1688。
+        只读抓取（搜索结果页），不自动发消息、不下单，单次限量防风控。
+        """
+        from app.browser import cdp
+
+        if not keywords or not keywords.strip():
+            return {"error": "keywords 不能为空（可先想好搜索词，或参考 plan_search 的策略）"}
+        max_items = max(1, min(int(max_items or 20), 40))
+        if not cdp.is_available():
+            return {
+                "error": "抓取浏览器未运行。",
+                "解决办法": "让用户运行 scripts/start_browser.py 启动抓取浏览器"
+                          "（首次需在新窗口扫码登录一次 1688），然后重新调用本工具。",
+                "降级方案": "暂用 plan_search 生成搜索链接走人工书签导入。",
+            }
+        try:
+            result = cdp.search_offers(keywords, max_items=max_items)
+        except Exception as e:
+            return {"error": f"浏览器抓取失败：{type(e).__name__}: {e}",
+                    "降级方案": "暂用 plan_search 生成搜索链接走人工书签导入。"}
+        if result.get("login_required"):
+            return {
+                "error": "抓取浏览器未登录 1688。",
+                "解决办法": "请在抓取浏览器窗口里扫码登录一次 1688（登录态会记住），"
+                          "然后重新调用本工具。",
+            }
+        items = cdp.normalize_items(result.get("items"), max_items)
+        if not items:
+            return {"error": "搜索页没有提取到商品卡片（可能是关键词太偏或页面改版）",
+                    "关键词": keywords, "降级方案": "换关键词重试，或走 plan_search 人工路。"}
+
+        t = _current_target()
+        if not t:
+            return {"error": "缺少当前目标款（请先选定目标款）"}
+
+        # 店铺 get_or_create（真实店名），商品 id=auto-{offer_id}，图片落盘
+        shops_by_name = {s.name: s.id for s in store.list_shops()}
+        upload_dir = Path(__file__).resolve().parents[2] / "data" / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        imported, skipped, img_ok, shops_touched = 0, 0, 0, set()
+        for it in items:
+            pid = f"auto-{it['offer_id']}"
+            if store.get_product(pid):
+                skipped += 1
+                continue
+            shop_name = it["shop"] or "1688搜索（卖家未记录）"
+            if shop_name in shops_by_name:
+                sid = shops_by_name[shop_name]
+            else:
+                sid = uuid.uuid4().hex
+                store.save_shop(Shop(id=sid, name=shop_name))
+                shops_by_name[shop_name] = sid
+            image_paths = []
+            local = cdp.download_image(it["image"], upload_dir) if it["image"] else None
+            if local:
+                # 存绝对路径，与书签导入口径一致（matcher 只认本地文件路径）
+                image_paths = [str(upload_dir / Path(local).name)]
+                img_ok += 1
+            store.save_product(Product(
+                id=pid, target_style_id=t.id, shop_id=sid,
+                title=it["title"], url=it["url"], listed_price=it["price"],
+                image_paths=image_paths,
+                match_status=MatchStatus.CANDIDATE,
+                match_reason="智能体浏览器搜索导入（真实店铺）",
+            ))
+            shops_touched.add(shop_name)
+            imported += 1
+        return {
+            "导入数": imported,
+            "跳过(已存在)": skipped,
+            "图片落盘": img_ok,
+            "涉及店铺": len(shops_touched),
+            "关键词": keywords,
+            "下一步": ("候选已入库且多数带图。建议直接调用 match_products 做视觉核验，"
+                      "然后 compare_prices 出比价结论。"),
+        }
+
     tools = [
+        ToolSpec(
+            name="auto_import",
+            description=(
+                "自动搜索并导入候选商品：在用户已登录的抓取浏览器里打开 1688 搜索页，"
+                "提取商品（真实店铺名、标价、主图）直接入库。当目标款候选太少、或用户说"
+                "「帮我找货源/找候选」时优先用这个工具（比 plan_search 人工路快得多）；"
+                "浏览器未运行或未登录时按返回的解决办法引导用户，再降级 plan_search。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "keywords": {"type": "string", "description": "1688 搜索关键词（参考目标款名称与属性，4-20 字）"},
+                    "max_items": {"type": "integer", "description": "单次导入上限（默认20，最大40）"},
+                },
+                "required": ["keywords"],
+            },
+            func=auto_import,
+        ),
+        ToolSpec(
+            name="create_plan",
+            description=(
+                "把一个需要多轮才能完成的长期采购目标（如「帮我用最低价采购50件XX」，"
+                "涉及搜索→导入→核验→比价→询价→等卖家回复→复比价）分解为有序步骤并持久化。"
+                "之后每次运行都会自动带上计划进度，跨轮次接续推进；同目标款新建计划会替代旧计划。"
+                "一次性能完成的简单问题不要用这个工具。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "goal": {"type": "string", "description": "长期目标的一句话描述"},
+                    "steps": {
+                        "type": "array",
+                        "description": "有序步骤数组，每项为字符串或 {action, detail?} 对象",
+                        "items": {},
+                    },
+                },
+                "required": ["goal", "steps"],
+            },
+            func=create_plan,
+        ),
+        ToolSpec(
+            name="get_plan",
+            description="查看当前目标款进行中的采购计划与各步骤进度（上下文里通常已注入，用于主动确认最新状态）。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            func=get_plan,
+        ),
+        ToolSpec(
+            name="update_plan_step",
+            description=(
+                "更新采购计划某一步的状态：pending(待办)/in_progress(进行中)/done(完成)/blocked(受阻)。"
+                "每完成一个阶段必须调用一次，防止跨轮次丢进度；全部步骤完成时计划自动关闭。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "step_index": {"type": "integer", "description": "步骤索引（从0开始）"},
+                    "status": {"type": "string", "description": "新状态", "enum": ["pending", "in_progress", "done", "blocked"]},
+                    "note": {"type": "string", "description": "一句话进展备注（可选），如「玮枫13元已核验」"},
+                },
+                "required": ["step_index"],
+            },
+            func=update_plan_step,
+        ),
         ToolSpec(
             name="plan_search",
             description=(
@@ -406,10 +656,17 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
         ),
         ToolSpec(
             name="match_products",
-            description="对目标款的候选商品执行视觉匹配，判断哪些是完全同款、等效替代、需要排除。必须在比价前做这一步，否则商品都是未核验状态。",
+            description=(
+                "对目标款的候选商品执行视觉匹配，判断哪些是完全同款、等效替代、需要排除。"
+                "必须在比价前做这一步，否则商品都是未核验状态。增量模式：已核验且图片未变"
+                "的商品自动复用结果，重复调用没有额外开销；force=true 可强制全量重跑。"
+            ),
             parameters={
                 "type": "object",
-                "properties": {"target_id": {"type": "string", "description": "目标款 ID"}},
+                "properties": {
+                    "target_id": {"type": "string", "description": "目标款 ID"},
+                    "force": {"type": "boolean", "description": "是否强制全量重跑（默认 false 增量）"},
+                },
                 "required": ["target_id"],
             },
             func=match_products,

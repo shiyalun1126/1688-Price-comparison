@@ -13,11 +13,15 @@ build/
 *.key
 secrets/
 
-# 数据（本地库、上传图、临时）
-data/*.db
-data/*.sqlite*
-data/uploads/
-data/images/
+# 数据与运行时产物（数据库、登录态、上传图、抓取数据、日志——一律不入库）
+data/
+uvicorn.log
+*.log
+
+# 个人工作区与本地资料
+.workbuddy/
+素材/
+eval/
 
 # 工具
 .pytest_cache/

@@ -20,11 +20,13 @@
 
 **方式一 · 智能体自动分析**——一句话目标，ReAct 智能体自主调工具，推理轨迹实时可见：
 
-<video src="app/web/static/videos/demo-agent.mp4" controls muted width="480"></video>
+[▶ 观看视频（点击在线播放）](app/web/static/videos/demo-agent.mp4)
 
 **方式二 · 书签手动导入**——1688 搜索页一键书签批量导入候选 → 视觉匹配 → 比价结论：
 
-<video src="app/web/static/videos/demo-manual.mp4" controls muted width="480"></video>
+[▶ 观看视频（点击在线播放）](app/web/static/videos/demo-manual.mp4)
+
+> 视频为 Playwright 真实录屏（录制脚本 `scripts/record_demo.py` 可复现）；本地克隆后页面内嵌播放器见 `使用说明` 页。
 
 ## 定位
 
@@ -85,7 +87,8 @@ start.bat        Windows 一键启动
 
 ```bash
 pip install -e ".[dev]"
-cp .env.example .env   # 填入 DEEPSEEK_API_KEY（不配则走规则兜底）
+cp .env.example .env   # 按 .env.example 注释填 LLM_*（文字智能体，任意 OpenAI 兼容厂商）
+                       # 与 DEEPSEEK_API_KEY（视觉匹配用多模态模型；不配则走规则兜底）
 python scripts/start_all.py     # 或 Windows 下直接双击 start.bat
 ```
 

@@ -63,9 +63,13 @@ class ReActAgent:
         self.tool_specs = tools
         self.system_prompt = system_prompt
         self.max_rounds = max_rounds
-        self.model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-        self.api_key = os.getenv("DEEPSEEK_API_KEY", "")
-        self.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+        # 通用 LLM_* 优先（任意 OpenAI 兼容厂商），缺省回退 DEEPSEEK_*
+        self.model = (model
+                      or os.getenv("LLM_MODEL", "")
+                      or os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+        self.api_key = os.getenv("LLM_API_KEY", "") or os.getenv("DEEPSEEK_API_KEY", "")
+        self.base_url = (os.getenv("LLM_BASE_URL", "")
+                         or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
 
     @property
     def available(self) -> bool:
@@ -107,7 +111,7 @@ class ReActAgent:
         run = AgentRun(goal=goal)
 
         if not self.available:
-            run.final_answer = "未配置 DEEPSEEK_API_KEY，智能体无法运行。"
+            run.final_answer = "未配置 LLM_API_KEY（或 DEEPSEEK_API_KEY），智能体无法运行。"
             return run
 
         messages: list[dict] = [{"role": "system", "content": self.system_prompt}]

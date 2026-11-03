@@ -47,6 +47,8 @@ def create_app() -> FastAPI:
     upload_dir = DATA_DIR / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
+    app.mount("/css", StaticFiles(directory=str(web_dir / "css")), name="css")
+    app.mount("/js", StaticFiles(directory=str(web_dir / "js")), name="js")
     if (web_dir / "static").exists():
         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
 
@@ -57,6 +59,11 @@ def create_app() -> FastAPI:
     @app.get("/bookmarklet", response_class=HTMLResponse)
     def bookmarklet_page() -> str:
         return (web_dir / "bookmarklet.html").read_text(encoding="utf-8")
+
+    @app.get("/v2", response_class=HTMLResponse)
+    def index_v2() -> str:
+        """V2 界面预览（深色指挥台），与 / 并行存在，便于对比择优。"""
+        return (web_dir / "index-v2.html").read_text(encoding="utf-8")
 
     @app.get("/probe", response_class=HTMLResponse)
     def probe_page() -> str:

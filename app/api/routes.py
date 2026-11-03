@@ -16,7 +16,7 @@ from app.matcher.matcher import Matcher
 from app.models.entities import InquiryTask, Product, Shop, TargetStyle
 from app.models.enums import MatchStatus
 from app.uploads import UPLOAD_DIR as _UPLOAD_DIR_IMPORT
-from app.uploads import ensure_upload_dir, save_upload, to_web_paths
+from app.uploads import ensure_upload_dir, save_upload, to_web_path, to_web_paths
 
 router = APIRouter(prefix="/api")
 
@@ -530,12 +530,13 @@ def list_inquiries(request: Request, target_id: str):
 
 
 def _attach_match_info(v: dict, p, quote_by_product: dict) -> dict:
-    """给询价视图补上核验分层 + 有效价格（供排序与前端展示）。"""
+    """给询价视图补上核验分层 + 有效价格 + 缩略图（供排序与前端展示）。"""
     tier = None
     if p is not None:
         tier = p.match_tier.value if p.match_tier else None
         if p.match_status == MatchStatus.REJECTED:
             tier = "rejected"
+        v["image"] = to_web_path(p.image_paths[0]) if p.image_paths else None
     v["tier"] = tier
     v["price"], v["price_source"] = quote_by_product.get(
         v["product_id"],
@@ -720,8 +721,14 @@ def build_report(request: Request, target_id: str):
     if target.reference_price:
         meta.append(f"参考价 ¥{target.reference_price:.2f}")
     meta.append(f"生成时间 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    # 数据时效：取标价抓取时间与报价时间中最近的一条作为「数据截至」
+    price_times = [p.created_at for p in products.values() if p.created_at]
+    price_times += [q.quoted_at for q in quotes if q.quoted_at]
+    if price_times:
+        meta.append(f"数据截至 {max(price_times).strftime('%Y-%m-%d %H:%M')}")
     L.append(f"> {' · '.join(meta)}")
     L.append("")
+    L.append("> 注：所有价格均为抓取/报价时点的快照，下单前请与卖家重新确认。")
 
     L.append("## 一、比价结论")
     L.append(f"**综述**：{result.summary}")
@@ -735,15 +742,18 @@ def build_report(request: Request, target_id: str):
 
     L.append("## 二、价格明细")
     if result.rows:
-        L.append("| # | 店铺 | 商品 | 价格 | 来源 | 核验 | MOQ | 含税 | 现货 | 时效 |")
-        L.append("|---|------|------|------|------|------|-----|------|------|------|")
+        L.append("| # | 店铺 | 商品 | 价格 | 折算价(100件) | 来源 | 核验 | MOQ | 含税 | 现货 | 时效 |")
+        L.append("|---|------|------|------|--------------|------|------|-----|------|------|------|")
         for idx, r in enumerate(result.rows, 1):
             price = f"¥{r['price']:.2f}" if r.get("price") is not None else "—"
+            norm = "—"
+            if r.get("normalized_price") is not None:
+                norm = f"¥{r['normalized_price']:.2f}" + (f"（{r['norm_note']}）" if r.get("norm_note") else "")
             src = "报价" if r.get("price_source") == "quoted" else "标价"
             stock = r.get("stock_status", "")
             stock_cn = {"in_stock": "现货", "pre_sale": "预售", "custom": "定制"}.get(stock, "—" if stock else "—")
             tax_cn = {"included": "含税", "excluded": "不含税"}.get(r.get("tax"), "—")
-            L.append(f"| {idx} | {r['shop_name']} | {(r['title'] or '')[:24]} | {price} | {src} "
+            L.append(f"| {idx} | {r['shop_name']} | {(r['title'] or '')[:24]} | {price} | {norm} | {src} "
                      f"| {_TIER_CN.get(r['tier'], '未核验')} | {r.get('moq') or '—'} | {tax_cn} | {stock_cn} | {_fmt_lead(r.get('lead_time_hours'))} |")
     else:
         L.append("（暂无可比数据）")

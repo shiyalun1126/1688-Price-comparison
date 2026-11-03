@@ -30,3 +30,9 @@ eval/
 
 # 权限修复产物
 .acl-recovery/
+
+# 演示模拟页素材（1688 商品图不入公开仓库，仅本地录制演示视频用）
+app/web/static/demo/
+data/_demo_raw/
+app/web/index.html.backup
+app/web/static/videos/*.webm

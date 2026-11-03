@@ -28,6 +28,48 @@ TIER_LABEL = {
     "rejected": "已排除",
 }
 
+# 归一基准量（件）：阶梯价 / MOQ 折算到该采购量档做横向可比
+NORM_REF_QTY = 100
+
+
+def _normalize(row: dict, ref_qty: int = NORM_REF_QTY) -> None:
+    """把一行价格折算到统一采购量档的单件可比价（MOQ 归一）。
+
+    动机：「500 件起 8.5 元」和「10 件起 10 元」的标价不可直接硬比。
+    规则：
+    - 有阶梯价：取 qty <= ref_qty 的最大档价格；所有档位都高于 ref_qty 时
+      取最低档价并标注「需达 N 件」。
+    - 无阶梯价：MOQ <= ref_qty 时原价直接可比；MOQ > ref_qty 保留原价
+      并标注起订门槛（提示该价需更大采购量支撑）。
+    归一结果写入 normalized_price / norm_note，不改动原始 price / tiers。
+    """
+    price = row.get("price")
+    if price is None or price <= 0:
+        row["normalized_price"] = None
+        row["norm_note"] = ""
+        return
+    tiers = [t for t in (row.get("tiers") or [])
+             if isinstance(t, dict) and t.get("qty") and t.get("price")]
+    tiers.sort(key=lambda t: t["qty"])
+    if tiers:
+        applicable = [t for t in tiers if t["qty"] <= ref_qty]
+        if applicable:
+            t = applicable[-1]
+            row["normalized_price"] = float(t["price"])
+            row["norm_note"] = f"按{t['qty']}件档" if float(t["price"]) != float(price) else ""
+        else:
+            t = tiers[0]
+            row["normalized_price"] = float(t["price"])
+            row["norm_note"] = f"需达{t['qty']}件"
+        return
+    moq = row.get("moq")
+    if moq and moq > ref_qty:
+        row["normalized_price"] = float(price)
+        row["norm_note"] = f"MOQ {moq}件起"
+        return
+    row["normalized_price"] = float(price)
+    row["norm_note"] = ""
+
 
 def _product_row(p: Product, shop: Optional[Shop]) -> dict:
     """把商品转成比价行（标价来源）。"""
@@ -47,9 +89,11 @@ def _product_row(p: Product, shop: Optional[Shop]) -> dict:
         "tiers": [],                   # 标价无阶梯价信息
         "condition_note": "页面标价",
         "tier": tier,
-        "comparable": tier == MatchTier.EXACT.value and p.listed_price is not None,
+        # 标价 <=0（抓取失败占位）与 ¥0 报价同样不可比，防止假最低价霸榜
+        "comparable": tier == MatchTier.EXACT.value and p.listed_price is not None and p.listed_price > 0,
         "url": p.url,
         "quoted_at": None,
+        "price_at": p.created_at.isoformat() if p.created_at else None,  # 标价抓取时间
     }
 
 
@@ -77,6 +121,7 @@ def _quote_row(q: Quote, p: Optional[Product], shop: Optional[Shop]) -> dict:
         "comparable": tier == MatchTier.EXACT.value and q.price is not None and q.price > 0,
         "url": p.url if p else None,
         "quoted_at": q.quoted_at.isoformat(),
+        "price_at": q.quoted_at.isoformat(),  # 报价时间（数据时效用）
     }
 
 
@@ -107,9 +152,26 @@ def _merge_rows(products: list[Product], quotes: list[Quote],
         rows[q.product_id] = qr
 
     out = list(rows.values())
-    # 排序：可比的在前，按价格升序
-    out.sort(key=lambda r: (not r["comparable"], r["price"] if r["price"] is not None else 1e9))
+    # MOQ 归一：折算到统一基准量后再排序，避免「大 MOQ 低价」霸榜误导
+    for r in out:
+        _normalize(r)
+    # 排序：可比的在前，按归一价升序（无归一价时退回原始价）
+    def _sort_key(r: dict):
+        p = r.get("normalized_price")
+        if p is None:
+            p = r["price"] if r["price"] is not None else 1e9
+        return (not r["comparable"], p)
+    out.sort(key=_sort_key)
     return out
+
+
+def _price_text(row: dict) -> str:
+    """价格文案：归一价与原始价不同时，同时给出折算依据。"""
+    txt = f"{row['price']:.2f} 元"
+    if row.get("norm_note") and row.get("normalized_price"):
+        txt += (f"（{row['norm_note']}，按 {NORM_REF_QTY} 件基准量折算 "
+                f"{row['normalized_price']:.2f} 元）")
+    return txt
 
 
 def build_comparison(
@@ -132,7 +194,7 @@ def build_comparison(
         return result
 
     exact_rows = [r for r in rows if r["comparable"]]
-    equiv_rows = [r for r in rows if r["tier"] == "equivalent" and r["price"] is not None]
+    equiv_rows = [r for r in rows if r["tier"] == "equivalent" and r["price"] is not None and r["price"] > 0]
     ref = target.reference_price
 
     # ---- 综述 ----
@@ -140,20 +202,23 @@ def build_comparison(
     n_quoted = sum(1 for r in rows if r["price_source"] == "quoted")
     parts = [f"共 {len(rows)} 家可比候选（标价 {n_listed} 条、询价报价 {n_quoted} 条）"]
     parts.append(f"其中完全同款 {len(exact_rows)} 家、等效替代 {len(equiv_rows)} 家")
+    if any(r.get("norm_note") for r in rows):
+        parts.append(f"价格已按 {NORM_REF_QTY} 件基准量归一折算（阶梯价/MOQ 门槛见行内标注）")
     if exact_rows:
-        parts.append(f"同款最低 {exact_rows[0]['price']:.2f} 元（{exact_rows[0]['shop_name']}）")
+        parts.append(f"同款最低 {_price_text(exact_rows[0])}（{exact_rows[0]['shop_name']}）")
     result.summary = "；".join(parts) + "。"
 
     # ---- 建议 ----
     if exact_rows:
         cheapest = exact_rows[0]
         src = "报价" if cheapest["price_source"] == "quoted" else "标价"
+        cheap_txt = _price_text(cheapest)
         if ref and cheapest["price"] <= ref:
-            rec = (f"建议优先考虑「{cheapest['shop_name']}」，{src} {cheapest['price']:.2f} 元，"
+            rec = (f"建议优先考虑「{cheapest['shop_name']}」，{src} {cheap_txt}，"
                    f"低于参考价 {ref:.2f} 元。")
         else:
             rec = (f"完全同款中价格最低的是「{cheapest['shop_name']}」，{src} "
-                   f"{cheapest['price']:.2f} 元。注意核对 MOQ / 含税 / 运费后再定。")
+                   f"{cheap_txt}。注意核对 MOQ / 含税 / 运费后再定。")
         # 页面标价可能是引流饵价（非真实成交价），最低价若来自标价须明确提示
         if cheapest["price_source"] == "listed":
             quoted_rows = [r for r in exact_rows if r["price_source"] == "quoted"]
@@ -170,7 +235,7 @@ def build_comparison(
     elif equiv_rows:
         cheapest = equiv_rows[0]
         rec = (f"暂无完全同款，最接近的等效替代来自「{cheapest['shop_name']}」"
-               f"{cheapest['price']:.2f} 元。建议先核验是否为同版货。")
+               f"{_price_text(cheapest)}。建议先核验是否为同版货。")
     else:
         rec = "没有可用价格数据，请先导入带价格的商品或完成询价。"
     result.recommendation = rec

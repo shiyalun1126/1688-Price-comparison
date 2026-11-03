@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>问渠 V2 · 驾驶舱（预览版）</title>
+<style>
+/* ============ V2「驾驶舱」设计 ============
+ * 与 V1（买手工作台）结构完全不同：
+ * 顶部单行命令栏 + 流程 ribbon + 三栏 IDE 工作区（各自内滚）+ 底部智能体 Dock 终端。
+ * 变量名沿用 V1（--accent/--border/--muted 等为 renderMarkdown/行内样式依赖，不得改名）。
+ * ============ */
+:root {
+  --paper:        oklch(18% 0.012 255);
+  --surface:      oklch(22% 0.013 255);
+  --surface-2:    oklch(26% 0.014 255);
+  --ink:          oklch(93% 0.008 90);
+  --ink-2:        oklch(80% 0.01 90);
+  --muted:        oklch(67% 0.012 90);
+  --faint:        oklch(52% 0.012 90);
+  --border:       oklch(29% 0.014 255);
+  --border-strong:oklch(37% 0.016 255);
+
+  --accent:       oklch(78% 0.145 68);
+  --accent-deep:  oklch(84% 0.12 72);
+  --accent-soft:  oklch(31% 0.05 62);
+
+  --gold-deep:    oklch(82% 0.11 88);
+  --gold-soft:    oklch(30% 0.045 85);
+  --ochre-deep:   oklch(80% 0.10 70);
+  --ochre-soft:   oklch(29% 0.04 70);
+  --leaf-deep:    oklch(77% 0.13 155);
+  --leaf-soft:    oklch(27% 0.05 155);
+  --danger:       oklch(72% 0.16 25);
+  --danger-soft:  oklch(30% 0.07 25);
+
+  --console-bg:     oklch(15% 0.016 240);
+  --console-surface:oklch(20% 0.018 240);
+  --console-border: oklch(28% 0.02 240);
+  --console-ink:    oklch(93% 0.005 90);
+  --console-muted:  oklch(66% 0.015 220);
+  --console-accent: oklch(83% 0.125 195);
+
+  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono:  "IBM Plex Mono", "SF Mono", ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+
+  --r-s: 4px; --r-m: 7px; --r-l: 10px;
+  --topbar-h: 52px; --pipe-h: 44px; --dock-h: 280px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; font-family: var(--font-sans); font-size: 13px; line-height: 1.6;
+  background: var(--paper); color: var(--ink);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+::selection { background: oklch(78% 0.145 68 / .3); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ 顶部命令栏 ============ */
+.topbar {
+  flex: none; height: var(--topbar-h); z-index: 40;
+  display: flex; align-items: center; gap: 18px; padding: 0 18px;
+  background: oklch(15.5% 0.014 255); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand-mark {
+  width: 26px; height: 26px; border-radius: 6px; background: var(--accent);
+  color: oklch(18% 0.02 60); font-family: var(--font-mono); font-weight: 700; font-size: 14px;
+  display: grid; place-items: center;
+}
+.brand b { font-size: 14px; letter-spacing: .02em; }
+.brand .brand-sub { font-family: var(--font-mono); font-size: 10px; color: var(--faint); letter-spacing: .04em; margin-left: 2px; }
+
+.nav { display: flex; gap: 2px; flex: none; }
+.nav-tab {
+  display: flex; align-items: center; gap: 7px; padding: 6px 13px;
+  border: 1px solid transparent; border-radius: var(--r-m); background: none;
+  font-family: var(--font-sans); font-size: 12.5px; color: var(--muted); cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.nav-tab svg { opacity: .7; }
+.nav-tab:hover { color: var(--ink); background: var(--surface); }
+.nav-tab.active { color: var(--accent); background: var(--accent-soft); border-color: oklch(40% 0.07 62); font-weight: 600; }
+.nav-tab.active svg { opacity: 1; }
+
+.page-pos { display: flex; align-items: baseline; gap: 7px; flex: none; font-size: 12px; color: var(--muted); }
+.page-pos i { color: var(--border-strong); font-style: normal; }
+.page-pos #page-title { font-weight: 700; color: var(--ink-2); }
+
+.top-stats { display: flex; gap: 14px; margin-left: 6px; flex: none; }
+.t-stat { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--faint); }
+.t-stat b { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.t-stat .sep { color: var(--border-strong); margin-left: 8px; }
+
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: none; }
+
+/* 目标款切换器（顶栏内） */
+.switcher { position: relative; }
+.switcher-btn {
+  display: flex; align-items: center; gap: 8px; max-width: 260px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-m);
+  padding: 5px 9px; cursor: pointer; font-family: var(--font-sans);
+  transition: border-color .15s, box-shadow .15s;
+}
+.switcher-btn:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.switcher-thumb { width: 24px; height: 24px; border-radius: var(--r-s); overflow: hidden; background: var(--surface-2); flex: none; display: grid; place-items: center; }
+.switcher-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.switcher-thumb i { width: 7px; height: 7px; border-radius: 2px; background: var(--border-strong); }
+.switcher-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.switcher-caret { color: var(--muted); flex: none; }
+.switcher-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; width: 300px; max-height: 360px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-l);
+  box-shadow: 0 12px 32px oklch(0% 0 0 / .5); padding: 6px; display: none; z-index: 60;
+}
+.switcher-pop.open { display: block; }
+.ts-option {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 7px; background: none; cursor: pointer;
+  font-family: var(--font-sans); text-align: left;
+}
+.ts-option:hover { background: var(--surface-2); }
+.ts-option.on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.ts-thumb { width: 32px; height: 32px; border-radius: var(--r-s); overflow: hidden; background: var(--surface-2); flex: none; display: grid; place-items: center; }
+.ts-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ts-thumb i { width: 8px; height: 8px; border-radius: 2px; background: var(--border-strong); }
+.ts-name { font-size: 12.5px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-meta { font-size: 10.5px; color: var(--muted); flex: none; font-family: var(--font-mono); }
+.ts-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--muted); }
+.ts-new { width: 100%; margin-top: 4px; }
+
+.side-status { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; }
+.side-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--leaf-deep); box-shadow: 0 0 7px oklch(77% 0.13 155 / .6); }
+
+/* ============ 流程 ribbon ============ */
+.pipeline {
+  flex: none; height: var(--pipe-h); z-index: 30;
+  display: flex; align-items: stretch; gap: 0; padding: 0 18px;
+  background: oklch(16.5% 0.013 255); border-bottom: 1px solid var(--border);
+}
+.pipe-step {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0;
+  border: 0; background: none; cursor: pointer; font-family: var(--font-sans);
+  position: relative; transition: background .15s;
+}
+.pipe-step + .pipe-step::before {
+  content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 1px; background: var(--border);
+}
+.pipe-step:hover { background: var(--surface); }
+.pipe-num {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  border: 1.5px solid var(--border-strong); color: var(--faint);
+}
+.pipe-step.done .pipe-num { background: var(--accent); border-color: var(--accent); color: oklch(18% 0.02 60); }
+.pipe-step.active .pipe-num { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pipe-label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.pipe-step.done .pipe-label { color: var(--ink-2); }
+.pipe-step.active .pipe-label { color: var(--accent); }
+.pipe-count { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 99px; padding: 0 7px; font-variant-numeric: tabular-nums; }
+
+/* ============ 主区 ============ */
+.content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+#tab-home.active { display: flex; flex-direction: column; min-height: 0; }
+#tab-import.active, #tab-tutorial.active { display: block; overflow-y: auto; height: 100%; }
+
+/* --- 三栏驾驶舱 --- */
+.cockpit {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 330px minmax(0, 1fr) 400px; gap: 1px;
+  background: var(--border); /* 栏间 1px 缝线 */
+}
+.col { background: var(--paper); min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.col > .zone { border: 0; border-radius: 0; }
+.col-center > .zone { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.col-center #result { flex: 1; overflow-y: auto; padding: 0 18px 18px; }
+.col-center .zone-head, .col-left .zone-head, .col-right .zone-head { padding: 14px 18px 0; }
+.col-center .zone-hint, .col-left .zone-hint, .col-right .zone-hint { margin: 4px 18px 12px; }
+
+.zone { background: var(--paper); padding: 0 0 18px; position: relative; }
+.zone-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.zone-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.zone-index {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border-radius: var(--r-s); padding: 1px 6px; letter-spacing: .08em;
+}
+.zone-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.zone-hint { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+.zone-hint b { color: var(--ink-2); }
+
+/* 目标款卡 */
+.target-current { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-m); }
+.target-preview { flex: none; }
+.target-preview .thumb { width: 52px; height: 52px; border-radius: 7px; object-fit: cover; border: 1px solid var(--border-strong); display: block; }
+.target-info { flex: 1; min-width: 0; }
+.target-name { font-size: 15px; font-weight: 700; line-height: 1.35; }
+.target-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.target-actions { display: flex; gap: 6px; flex: none; flex-direction: column; align-items: stretch; }
+
+.nt-form { margin: 12px 18px 0; border: 1px dashed var(--border-strong); border-radius: var(--r-m); padding: 14px; }
+.nt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nt-grid .span2 { grid-column: span 2; }
+.nt-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* 表单 */
+.field label, .row-label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+input, textarea, select {
+  width: 100%; padding: 7px 9px; font-family: var(--font-sans); font-size: 12.5px;
+  color: var(--ink); background: oklch(15.5% 0.014 255); border: 1px solid var(--border-strong); border-radius: var(--r-m);
+  transition: border-color .15s, box-shadow .15s;
+}
+select option { background: var(--surface); color: var(--ink); }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+textarea { resize: vertical; }
+
+.sub-row { display: flex; align-items: flex-end; gap: 7px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--border); margin: 0 18px; }
+.sub-row:first-of-type { border-top: 0; }
+.sub-row .row-label { padding-bottom: 7px; flex: none; width: 30px; }
+.sub-row .grow { flex: 1; min-width: 110px; }
+.sub-row .w-90 { width: 84px; flex: none; }
+.sub-row .w-180 { width: 150px; flex: none; }
+.sub-row select { width: auto; min-width: 130px; flex: none; }
+
+/* 按钮 */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px; justify-content: center;
+  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; line-height: 1.2;
+  padding: 7px 13px; border-radius: var(--r-m); border: 1px solid transparent; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, opacity .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.btn.sm { padding: 4px 9px; font-size: 11.5px; }
+.btn.primary { background: var(--accent); color: oklch(18% 0.02 60); }
+.btn.primary:hover { background: oklch(84% 0.13 72); box-shadow: 0 0 12px oklch(78% 0.145 68 / .4); }
+.btn.default { background: transparent; border-color: var(--border-strong); color: var(--ink-2); }
+.btn.default:hover { background: var(--surface-2); border-color: var(--muted); color: var(--ink); }
+.btn.ghost { background: var(--accent-soft); color: var(--accent-deep); }
+.btn.ghost:hover { background: oklch(36% 0.06 62); }
+.btn.danger-text { background: none; color: var(--danger); padding-left: 7px; padding-right: 7px; }
+.btn.danger-text:hover { background: var(--danger-soft); }
+.btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
+
+/* 进度 */
+#progress { margin: 10px 18px 0; }
+.progress-track { background: var(--surface-2); border-radius: 99px; height: 5px; overflow: hidden; }
+#progress-bar { background: var(--accent); height: 100%; width: 0%; transition: width .3s ease-out; border-radius: 99px; box-shadow: 0 0 8px oklch(78% 0.145 68 / .5); }
+#progress-text { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 5px; font-variant-numeric: tabular-nums; }
+
+/* 空状态 / 通用 */
+.empty { border: 1.5px dashed var(--border-strong); border-radius: var(--r-m); padding: 26px 18px; text-align: center; font-size: 12.5px; color: var(--muted); line-height: 1.8; margin: 10px 18px 0; }
+.muted { color: var(--muted); font-size: 12px; }
+code { font-family: var(--font-mono); }
+a { color: var(--accent); }
+pre { background: oklch(15.5% 0.014 255); border: 1px solid var(--border); border-radius: var(--r-m); padding: 9px 11px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.7; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--ink-2); }
+
+/* 询价区 */
+#inq-chips button {
+  cursor: pointer; font: inherit; font-size: 11.5px; line-height: 1.7;
+  padding: 1px 10px; border-radius: 999px; background: transparent;
+  border: 1px solid var(--border); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+#inq-chips button.on { background: var(--accent); border-color: var(--accent); color: oklch(18% 0.02 60); }
+.script-fold summary { cursor: pointer; color: var(--accent-deep, var(--accent)); font-size: 11.5px; user-select: none; list-style: none; }
+.script-fold summary::before { content: '▸ '; }
+.script-fold[open] summary::before { content: '▾ '; }
+.script-fold pre { margin-top: 5px; }
+
+/* 表格 */
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; color: var(--muted); white-space: nowrap; font-family: var(--font-mono); }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--surface); }
+td { font-variant-numeric: tabular-nums; }
+
+/* 匹配结果 */
+.match-col { margin-top: 14px; }
+.match-col h3 { font-size: 12.5px; margin: 0 0 7px; display: flex; align-items: center; gap: 8px; }
+.match-col h3 .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+.match-card { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: var(--r-m); padding: 9px 11px; margin-bottom: 7px; background: var(--surface); }
+.match-card:hover { border-color: var(--border-strong); }
+.match-card img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-m); flex: none; border: 1px solid var(--border-strong); }
+.match-card .info { flex: 1; min-width: 0; }
+.match-card .shop { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.match-card .shop .price { font-family: var(--font-mono); color: var(--accent); font-weight: 700; }
+.match-card .reason { color: var(--muted); font-size: 11.5px; margin-top: 4px; line-height: 1.7; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: var(--r-s); flex: none; font-family: var(--font-mono); }
+.tag.exact { background: var(--gold-soft); color: var(--gold-deep); border: 1px solid oklch(40% 0.06 85); }
+.tag.equiv { background: var(--ochre-soft); color: var(--ochre-deep); border: 1px solid oklch(38% 0.05 70); }
+.tag.other { background: var(--surface-2); color: var(--muted); }
+
+/* 比价表 */
+.cmp-summary { margin: 12px 18px 0; }
+.cmp-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 18px 0; font-size: 11.5px; color: var(--muted); }
+.cmp-meta .rebtn { font: inherit; font-size: 11.5px; color: var(--accent-deep); background: transparent; border: 1px solid var(--border-strong); border-radius: 99px; padding: 2px 11px; cursor: pointer; }
+.cmp-meta .rebtn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.cmp-scroll { overflow-x: auto; margin: 10px 18px 0; }
+.cmp-best td { background: var(--accent-soft); }
+.cmp-best td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.cmp-badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.cmp-badge.ok { background: var(--leaf-soft); color: var(--leaf-deep); border: 1px solid oklch(36% 0.07 155); }
+.cmp-badge.warn { background: var(--ochre-soft); color: var(--ochre-deep); border: 1px solid oklch(36% 0.05 70); }
+.cmp-cond { font-family: var(--font-mono); font-size: 11px; line-height: 1.9; color: var(--ink-2); }
+.age { display: inline-block; font-size: 10.5px; line-height: 1.7; color: var(--faint); white-space: nowrap; font-family: var(--font-mono); }
+.age-warn { color: var(--gold-deep); background: var(--gold-soft); padding: 0 6px; border-radius: 99px; }
+.age-stale { color: var(--muted); background: var(--surface-2); padding: 0 6px; border-radius: 99px; }
+
+/* 询价表 */
+.wb-scroll { overflow-x: auto; margin: 0 18px; }
+.p-thumb { width: 36px; height: 36px; border-radius: var(--r-s); object-fit: cover; flex: none; background: var(--surface-2); border: 0.5px solid var(--border-strong); }
+.p-cell { display: flex; gap: 7px; align-items: flex-start; }
+.attr-chip { display: inline-block; font-size: 10.5px; line-height: 1.8; padding: 0 7px; border-radius: 999px; background: var(--gold-soft); color: var(--gold-deep); margin: 2px 5px 2px 0; white-space: nowrap; border: 1px solid oklch(38% 0.05 85); }
+.status { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 9px; border-radius: 99px; white-space: nowrap; font-family: var(--font-mono); }
+.status.pending { background: var(--surface-2); color: var(--muted); }
+.status.draft { background: var(--accent-soft); color: var(--accent-deep); }
+.status.sent { background: var(--ochre-soft); color: var(--ochre-deep); }
+.status.replied { background: var(--gold-soft); color: var(--gold-deep); }
+.status.quoted { background: var(--leaf-soft); color: var(--leaf-deep); }
+.status.closed { background: var(--surface-2); color: var(--faint); }
+
+/* file 控件 */
+.file-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--accent-deep); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 99px; padding: 3px 12px; cursor: pointer; white-space: nowrap; }
+.file-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.file-name { font-size: 10.5px; color: var(--faint); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ============ 底部智能体 Dock ============ */
+.console {
+  flex: none; height: var(--dock-h); min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--console-bg); border-top: 1px solid var(--console-border);
+  transition: height .2s ease-out;
+}
+.console.dock-closed { height: 34px; }
+.console-head {
+  flex: none; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px;
+  border-bottom: 1px solid var(--console-border); cursor: pointer; user-select: none;
+  background: linear-gradient(180deg, oklch(21% 0.02 240), transparent);
+}
+.console-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--console-accent); box-shadow: 0 0 8px oklch(83% 0.125 195 / .5); }
+.console-title { font-size: 12px; font-weight: 700; color: var(--console-ink); letter-spacing: .03em; }
+.console-sub { font-size: 10.5px; color: var(--console-muted); font-family: var(--font-mono); }
+.console-caret { margin-left: 4px; color: var(--console-muted); transition: transform .2s; }
+.console.dock-closed .console-caret { transform: rotate(180deg); }
+.console-clear {
+  margin-left: auto; font-family: var(--font-sans); font-size: 10.5px; color: var(--console-muted);
+  background: none; border: 1px solid var(--console-border); border-radius: 99px; padding: 2px 9px; cursor: pointer;
+}
+.console-clear:hover { color: var(--console-ink); border-color: var(--console-muted); }
+.console-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; }
+.console.dock-closed .console-body { display: none; }
+
+.console-goal { display: flex; gap: 8px; max-width: 720px; }
+.console-goal input { flex: 1; background: var(--console-surface); border: 1px solid var(--console-border); color: var(--console-ink); font-size: 12.5px; }
+.console-goal input::placeholder { color: var(--console-muted); }
+.console-goal input:focus { border-color: var(--console-accent); box-shadow: 0 0 0 3px oklch(83% 0.125 195 / .12); }
+.console-goal .btn.primary { flex: none; }
+.console-chips { margin-top: 9px; }
+.chip {
+  display: inline-block; background: var(--console-surface); color: var(--console-ink);
+  border: 1px solid var(--console-border); border-radius: 99px; padding: 3px 11px;
+  font-size: 11.5px; cursor: pointer; margin-right: 6px;
+}
+.chip:hover { border-color: var(--console-accent); color: var(--console-accent); }
+
+.console-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; margin-top: 12px; }
+.console-sec {
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--console-muted);
+  margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--console-border);
+}
+.console-sec .console-sec-sub { font-weight: 400; letter-spacing: 0; margin-left: auto; }
+#agent-trace:empty::after { content: "还没有运行记录。输入目标，看它自主规划、调用工具。"; display: block; font-size: 11.5px; color: var(--console-muted); }
+
+.trace-step { border-left: 2px solid var(--console-accent); padding: 1px 0 1px 11px; margin-bottom: 12px; }
+.trace-step .rnd { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; color: var(--console-accent); letter-spacing: .1em; }
+.trace-label { display: inline-block; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; color: var(--console-muted); letter-spacing: .12em; margin-right: 7px; }
+.trace-thought { color: var(--console-ink); margin: 5px 0; font-size: 12.5px; line-height: 1.7; }
+.trace-tool { font-family: var(--font-mono); font-size: 11.5px; color: var(--console-accent); background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 3px 9px; margin: 5px 0; display: inline-block; }
+.trace-tool .raw { color: var(--console-muted); margin-left: 6px; }
+.trace-args { font-family: var(--font-mono); font-size: 10.5px; color: var(--console-muted); margin: 3px 0; word-break: break-all; }
+.trace-obs { background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 7px 9px; font-family: var(--font-mono); font-size: 10.5px; line-height: 1.7; color: var(--console-muted); max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin-top: 5px; }
+.agent-final { background: color-mix(in oklch, var(--console-accent) 10%, var(--console-bg)); border: 1px solid color-mix(in oklch, var(--console-accent) 32%, var(--console-bg)); border-radius: var(--r-m); padding: 10px 12px; margin-top: 5px; }
+.agent-final .trace-label { color: var(--console-accent); }
+.agent-final .final-body { color: var(--console-ink); font-size: 12.5px; line-height: 1.75; margin-top: 5px; }
+.agent-final a, .trace-thought a { color: var(--console-accent); }
+.trace-usage { font-family: var(--font-mono); font-size: 10.5px; color: var(--console-muted); margin-top: 8px; }
+
+.md-h { font-weight: 700; margin: 9px 0 3px; color: var(--console-ink); }
+.md-pre { background: var(--console-surface); border: 1px solid var(--console-border); border-radius: var(--r-s); padding: 7px 9px; overflow: auto; font-size: 11.5px; margin: 5px 0; color: var(--console-ink); }
+.md-code { background: var(--console-surface); color: var(--console-accent); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+table.md-tbl { margin: 7px 0; font-size: 11.5px; }
+table.md-tbl th { color: var(--console-muted); border-bottom: 1px solid var(--console-border); }
+table.md-tbl td { border-bottom: 1px solid var(--console-border); color: var(--console-ink); }
+
+.hist-item { border-bottom: 1px solid var(--console-border); padding: 7px 0; }
+.hist-item:last-child { border-bottom: 0; }
+.hist-summary { cursor: pointer; font-size: 11.5px; color: var(--console-ink); list-style: none; display: flex; align-items: baseline; gap: 7px; }
+.hist-summary::-webkit-details-marker { display: none; }
+.hist-summary::before { content: "▸"; color: var(--console-muted); font-size: 9.5px; }
+.hist-item[open] .hist-summary::before { transform: rotate(90deg); }
+.hist-goal { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hist-meta { font-family: var(--font-mono); font-size: 9.5px; color: var(--console-muted); flex: none; margin-left: auto; }
+.hist-body { font-size: 11.5px; color: var(--console-muted); padding: 7px 0 3px 13px; line-height: 1.75; white-space: pre-wrap; }
+
+/* ============ 导入 / 说明页 ============ */
+.page { max-width: 800px; margin: 0 auto; padding: 40px 24px 80px; }
+.page-head h2 { font-size: 22px; font-weight: 700; margin: 8px 0 6px; }
+.page-head p { font-size: 13px; color: var(--muted); margin: 0 0 8px; max-width: 62ch; }
+.guide { margin-top: 20px; }
+.guide-step { display: grid; grid-template-columns: 52px 1fr; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--border); }
+.guide-step:last-child { border-bottom: 0; }
+.guide-num { font-family: var(--font-mono); font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+.guide-step h3 { font-size: 13.5px; font-weight: 700; margin: 2px 0 7px; }
+.guide-step p { font-size: 12.5px; color: var(--ink-2); margin: 5px 0; line-height: 1.8; }
+.guide-step select { max-width: 340px; }
+.guide-step textarea { margin-top: 8px; }
+.bm-btn {
+  display: inline-flex; align-items: center; gap: 7px; margin: 6px 0 4px;
+  background: var(--accent); color: oklch(18% 0.02 60); text-decoration: none;
+  font-size: 12.5px; font-weight: 600; padding: 9px 16px; border-radius: var(--r-m);
+}
+.bm-btn:hover { background: oklch(84% 0.13 72); box-shadow: 0 0 14px oklch(78% 0.145 68 / .4); }
+.check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); margin: 10px 0 4px; cursor: pointer; }
+.check input { width: auto; }
+.video-empty { border: 1.5px dashed var(--border-strong); border-radius: var(--r-l); padding: 40px 20px; text-align: center; color: var(--muted); margin-top: 12px; }
+.video-empty .t { font-size: 12.5px; font-weight: 600; }
+.video-empty .s { font-size: 11.5px; margin-top: 5px; }
+
+.demo-videos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.demo-video { border: 1px solid var(--border); border-radius: var(--r-l); overflow: hidden; background: var(--soft); }
+.demo-video video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.demo-video .cap { padding: 10px 14px 12px; }
+.demo-video .cap .t { font-size: 13px; font-weight: 700; color: var(--ink); }
+.demo-video .cap .t .n { font-family: var(--font-mono); font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--r-s); padding: 1px 7px; margin-right: 7px; }
+.demo-video .cap .s { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+@media (max-width: 900px) { .demo-videos { grid-template-columns: 1fr; } }
+.tut-list { counter-reset: tut; list-style: none; margin: 9px 0 0; padding: 0; }
+.tut-list li { counter-increment: tut; position: relative; padding: 6px 0 6px 36px; font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+.tut-list li::before {
+  content: counter(tut); position: absolute; left: 0; top: 8px;
+  width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; display: grid; place-items: center;
+}
+.tut-list b { color: var(--ink); }
+.tut-block { margin-top: 26px; }
+.tut-block h3 { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+/* ============ 响应式：窄屏退化为纵向堆叠 ============ */
+@media (max-width: 1180px) {
+  /* 窄屏：三栏退化为纵向堆叠，工作区整体滚动 */
+  .cockpit { display: flex; flex-direction: column; overflow-y: auto; }
+  .col { overflow: visible; flex: none; }
+  .col-center > .zone { flex: none; display: block; }
+  .col-center #result { overflow: visible; flex: none; }
+}
+@media (max-width: 880px) {
+  body { overflow: auto; }
+  .topbar { height: auto; flex-wrap: wrap; padding: 8px 12px; gap: 10px; }
+  .top-stats { display: none; }
+  .pipeline { flex-wrap: wrap; height: auto; padding: 4px 8px; }
+  .pipe-step { flex: 1 1 40%; padding: 6px 8px; justify-content: flex-start; }
+  .cockpit { display: flex; flex-direction: column; }
+  .col { overflow: visible; }
+  .console { height: 240px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 顶部命令栏 ============ -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">渠</div>
+    <b>问渠</b>
+    <span class="brand-sub">1688 比价智能体 · V2 预览</span>
+  </div>
+  <nav class="nav">
+    <button type="button" class="nav-tab active" data-tab="home" onclick="showTab('home')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>
+      工作台
+    </button>
+    <button type="button" class="nav-tab" data-tab="import" onclick="showTab('import')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h8a1 1 0 0 1 1 1V14.5l-5-2.5L3 14.5V2.5a1 1 0 0 1 1-1Z"/></svg>
+      导入书签
+    </button>
+    <button type="button" class="nav-tab" data-tab="tutorial" onclick="showTab('tutorial')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M6 6a2 2 0 1 1 3 1.7c-.7.4-1 1-1 1.8"/><circle cx="8" cy="12" r=".4" fill="currentColor"/></svg>
+      使用说明
+    </button>
+  </nav>
+  <span class="page-pos"><span id="page-title">工作台</span><i>·</i><span id="page-sub">以款找源 · 全网比价</span></span>
+  <div class="top-stats">
+    <span class="t-stat">目标款 <b id="stat-targets">–</b></span>
+    <span class="t-stat"><span class="sep">·</span> 候选 <b id="stat-products">–</b></span>
+    <span class="t-stat"><span class="sep">·</span> 店铺 <b id="stat-shops">–</b></span>
+  </div>
+  <div class="top-right">
+    <div class="switcher">
+      <button type="button" class="switcher-btn" id="btn-switch" onclick="toggleSwitcher()" aria-haspopup="listbox">
+        <span class="switcher-thumb" id="switcher-thumb"><i></i></span>
+        <span class="switcher-name" id="switcher-name">未选择目标款</span>
+        <svg class="switcher-caret" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 4.5 3 3 3-3"/></svg>
+      </button>
+      <div class="switcher-pop" id="switcher-pop" role="listbox">
+        <div id="switcher-options"></div>
+        <button type="button" class="btn ghost sm ts-new" onclick="toggleSwitcher(false); openNewTargetForm()">＋ 新建目标款</button>
+      </div>
+    </div>
+    <button type="button" class="btn default sm" onclick="showDemo()">▶ 演示</button>
+    <div class="side-status"><span class="dot"></span>本地服务运行中</div>
+  </div>
+</header>
+
+<!-- ============ 流程 ribbon ============ -->
+<nav class="pipeline" id="pipeline">
+  <button type="button" class="pipe-step" data-zone="zone-target"><span class="pipe-num">1</span><span class="pipe-label">目标款</span><span class="pipe-count" id="pipe-c1"></span></button>
+  <button type="button" class="pipe-step" data-zone="zone-candidates"><span class="pipe-num">2</span><span class="pipe-label">候选商品</span><span class="pipe-count" id="pipe-c2"></span></button>
+  <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">3</span><span class="pipe-label">视觉匹配</span><span class="pipe-count" id="pipe-c3"></span></button>
+  <button type="button" class="pipe-step" data-zone="zone-inquiry"><span class="pipe-num">4</span><span class="pipe-label">询价</span><span class="pipe-count" id="pipe-c4"></span></button>
+  <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">5</span><span class="pipe-label">比价结论</span><span class="pipe-count" id="pipe-c5"></span></button>
+</nav>
+
+<main class="content">
+
+  <!-- ================= Tab: 工作台（三栏驾驶舱） ================= -->
+  <div id="tab-home" class="tab-content active">
+    <div class="cockpit">
+
+      <!-- 左栏：目标款 + 候选录入 -->
+      <div class="col col-left">
+        <section class="zone" id="zone-target">
+          <div class="zone-head">
+            <div class="zone-title"><span class="zone-index">01</span>目标款</div>
+            <div class="zone-actions">
+              <button type="button" class="btn primary sm" id="btn-new-target" onclick="openNewTargetForm()">＋ 新建</button>
+            </div>
+          </div>
+          <p class="zone-hint">以款找源的基准：图片用于视觉匹配，文字与属性用于核验。</p>
+          <div class="target-current">
+            <div class="target-preview" id="target-preview"></div>
+            <div class="target-info">
+              <div class="target-name" id="target-name">未选择目标款</div>
+              <div class="target-meta" id="target-meta">创建或切换一个目标款，开始比价工作流</div>
+            </div>
+            <div class="target-actions">
+              <button type="button" class="btn default sm" id="btn-switch-zone" onclick="toggleSwitcher(true)">切换</button>
+              <button type="button" class="btn danger-text sm" id="btn-delete-target" onclick="deleteCurrentTarget()" disabled>删除</button>
+            </div>
+          </div>
+          <div class="nt-form" id="new-target-form" hidden>
+            <div class="nt-grid">
+              <div class="field"><label>名称</label><input id="ts-name" placeholder="例：280g 纯棉落肩卫衣-藏青"></div>
+              <div class="field"><label>品类</label><input id="ts-cat" placeholder="例：衬衫 / 卫衣 / 保温杯，可留空"></div>
+              <div class="field"><label>参考价（元，可选）</label><input id="ts-ref" type="number" step="0.01"></div>
+              <div class="field"><label>目标款图片</label><span style="display:flex;align-items:center;gap:8px"><label class="file-btn">选择图片<input id="ts-image" type="file" accept="image/*" hidden></label><span class="file-name">未选择</span></span></div>
+              <div class="field span2"><label>文字描述（面料 / 克重 / 版型 / 尺码）</label><textarea id="ts-desc" rows="2" placeholder="纯棉 280g 落肩 宽松版型 S-XXL"></textarea></div>
+              <div class="field span2"><label>结构化属性（JSON）</label><input id="ts-attr" placeholder='{"面料":"纯棉","克重":"280g"}'></div>
+            </div>
+            <div class="nt-actions">
+              <button type="button" class="btn primary" onclick="createTarget()">创建目标款</button>
+              <button type="button" class="btn default" onclick="toggleTargetForm(false)">取消</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="zone" id="zone-candidates">
+          <div class="zone-head">
+            <div class="zone-title"><span class="zone-index">02</span>候选商品</div>
+          </div>
+          <p class="zone-hint">书签从 1688 批量导入，或在此手动添加；匹配与比价操作在 <b>03 区</b>执行。</p>
+          <div class="sub-row">
+            <span class="row-label">门店</span>
+            <select id="shop-select"></select>
+            <input id="shop-name" class="grow" placeholder="新门店名，例：义乌XX服饰">
+            <button type="button" class="btn default sm" onclick="createShop()">添加门店</button>
+          </div>
+          <div class="sub-row">
+            <span class="row-label">商品</span>
+            <input id="prod-title" class="grow" placeholder="候选商品标题">
+            <input id="prod-price" class="w-90" type="number" step="0.01" placeholder="标价 ¥">
+            <span style="display:flex;align-items:center;gap:8px"><label class="file-btn">选择图片<input id="prod-image" class="w-180" type="file" accept="image/*" hidden></label><span class="file-name">未选择</span></span>
+            <input id="prod-attr" class="grow" placeholder='属性 JSON，可选'>
+            <button type="button" class="btn default sm" onclick="createProduct()">添加候选</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 中栏：匹配与比价（主战场） -->
+      <div class="col col-center">
+        <section class="zone" id="zone-result">
+          <div class="zone-head">
+            <div class="zone-title"><span class="zone-index">03</span>匹配与比价</div>
+            <div class="zone-actions">
+              <button type="button" class="btn primary" id="btn-match" onclick="runMatch()">执行视觉匹配</button>
+              <button type="button" class="btn default" id="btn-compare" onclick="runComparison()">生成比价结论</button>
+              <button type="button" class="btn default" id="btn-export" onclick="exportComparison()" disabled>
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v8m0 0L4 6.5m3 3 3-3M2 11.5h10"/></svg>
+                导出 Excel
+              </button>
+              <button type="button" class="btn default" id="btn-report" onclick="downloadReport()">
+                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5h6l2.5 2.5v8.5H3z"/><path d="M9 1.5V4h2.5M5 7h4M5 9.5h4"/></svg>
+                导出报告
+              </button>
+            </div>
+          </div>
+          <div id="progress" style="display:none">
+            <div class="progress-track"><div id="progress-bar"></div></div>
+            <div id="progress-text"></div>
+          </div>
+          <div id="result">
+            <div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 右栏：询价工作台 -->
+      <div class="col col-right">
+        <section class="zone" id="zone-inquiry">
+          <div class="zone-head">
+            <div class="zone-title"><span class="zone-index">04</span>询价工作台</div>
+            <div class="zone-actions">
+              <input id="inquiry-search" type="search" placeholder="搜索店铺 / 商品名…" autocomplete="off"
+                     style="width:150px;padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--paper);font:inherit;font-size:12px;color:var(--ink)"
+                     oninput="renderWorkbench()">
+              <button type="button" class="btn default sm" onclick="refreshInquiries()">刷新列表</button>
+            </div>
+          </div>
+          <p class="zone-hint">逐个店铺生成话术 → 去旺旺发送 → 回贴卖家回复 → 自动解析报价。</p>
+          <div id="inq-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 18px 10px"></div>
+          <div id="workbench"></div>
+        </section>
+      </div>
+
+    </div>
+
+    <!-- 底部智能体 Dock（点击标题栏可收起） -->
+    <aside class="console dock" id="dock">
+      <div class="console-head" onclick="toggleDock()">
+        <span class="console-dot"></span>
+        <span class="console-title">智能体控制台</span>
+        <span class="console-sub">ReAct · 自主规划</span>
+        <svg class="console-caret" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7.5 3-3 3 3"/></svg>
+        <button type="button" class="console-clear" onclick="event.stopPropagation(); clearAgentHistory()">清空</button>
+      </div>
+      <div class="console-body">
+        <div class="console-goal">
+          <input id="agent-goal" placeholder="告诉它你要什么，例：帮我看看这个款哪家最便宜、有什么风险"
+                 onkeydown="if(event.key==='Enter')runAgent()">
+          <button type="button" class="btn primary" id="btn-agent" onclick="runAgent()">分析</button>
+        </div>
+        <div class="console-chips">
+          <span class="chip" onclick="setGoal('帮我分析这个款哪家最便宜，给出采购建议')">哪家最便宜？</span>
+          <span class="chip" onclick="setGoal('这个款的数据够不够做比价？有什么问题')">数据够用吗？</span>
+          <span class="chip" onclick="setGoal('找出同款，并按价格排序，告诉我能省多少')">比价排序</span>
+          <span class="chip" onclick="setGoal('候选商品太少了，帮我生成1688搜索链接，教我怎么导入')">帮我找候选</span>
+        </div>
+        <div class="console-cols">
+          <div>
+            <div class="console-sec"><span>推理轨迹</span><span class="console-sec-sub">本次运行</span></div>
+            <div id="agent-trace"></div>
+          </div>
+          <div>
+            <div class="console-sec"><span>对话历史</span><span class="console-sec-sub">按目标款记忆</span></div>
+            <div id="agent-history"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ================= Tab: 导入书签 ================= -->
+  <div id="tab-import" class="tab-content">
+    <div class="page">
+      <div class="page-head">
+        <h2>导入书签</h2>
+        <p>在 1688 页面点一下书签，自动抓取标题、主图、价格、店铺并入库。支持搜索列表页批量导入与商品详情页单条导入。</p>
+      </div>
+      <div class="guide">
+        <div class="guide-step">
+          <div class="guide-num">0</div>
+          <div>
+            <h3>选择要导入到哪个目标款</h3>
+            <select id="target-select-import"></select>
+            <label class="check"><input type="checkbox" id="create-new-target"><span>将此页商品设为<b>新目标款</b>（面试演示用）</span></label>
+            <p class="muted">勾选后，在详情页点书签会先创建新目标款，再把当前商品挂到其下。</p>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-num">1</div>
+          <div>
+            <h3>把书签拖到浏览器书签栏</h3>
+            <a id="bm-btn" class="bm-btn" href="#" onclick="return false;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8m0 0L5 7m3 3 3-3M2.5 12.5h11"/></svg>
+              导入 1688 商品
+            </a>
+            <p class="muted">拖不动就右键「复制链接地址」，手动新建书签并粘贴。</p>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-num">2</div>
+          <div>
+            <h3>在 1688 页面点击书签</h3>
+            <p><b>方式 A（批量，推荐）</b>：在搜索列表页 <code>s.1688.com/selloffer/…</code> 点书签 → 抓取全页商品 → 批量导入。</p>
+            <p><b>方式 B（单条）</b>：在商品详情页 <code>detail.1688.com/offer/…</code> 点书签 → 导入当前商品。</p>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-num">…</div>
+          <div>
+            <h3>排查：书签源码</h3>
+            <p class="muted">如需手动新建书签，把下面代码作为书签 URL：</p>
+            <textarea id="bm-code" rows="8" readonly></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= Tab: 使用说明 ================= -->
+  <div id="tab-tutorial" class="tab-content">
+    <div class="page">
+      <div class="page-head">
+        <h2>使用说明</h2>
+        <p>四步走完一次完整的以款找源：建目标款 → 导入候选 → 匹配 → 比价询价。</p>
+      </div>
+
+      <div class="tut-block">
+        <h3><span class="zone-index">01</span>快速上手</h3>
+        <ol class="tut-list">
+          <li><b>创建目标款</b>：工作台「＋ 新建」，填名称并上传图片（视觉匹配必选）。</li>
+          <li><b>导入候选</b>：切到「导入书签」页拿书签，去 1688 搜索页或详情页点一下。</li>
+          <li><b>执行匹配</b>：回到工作台点「执行视觉匹配」，候选被分为完全同款 / 等效替代 / 已排除。</li>
+          <li><b>比价询价</b>：「生成比价结论」看价格与成交条件；询价工作台逐家出话术、回贴报价。</li>
+        </ol>
+      </div>
+
+      <div class="tut-block">
+        <h3><span class="zone-index">02</span>演示视频</h3>
+        <div class="demo-videos">
+          <div class="demo-video">
+            <video controls preload="metadata" src="/static/videos/demo-agent.mp4"></video>
+            <div class="cap">
+              <div class="t"><span class="n">方式一</span>智能体自动分析</div>
+              <div class="s">一句话下达目标 → ReAct 智能体自主调用工具（查看目标款 → 视觉匹配 → 比价），推理轨迹实时可见 → 输出比价结论与采购建议。</div>
+            </div>
+          </div>
+          <div class="demo-video">
+            <video controls preload="metadata" src="/static/videos/demo-manual.mp4"></video>
+            <div class="cap">
+              <div class="t"><span class="n">方式二</span>书签手动导入</div>
+              <div class="s">在导入页取书签 → 打开 1688 搜索结果页点一下书签 → 候选商品批量入库 → 执行视觉匹配分出同款/替代 → 生成比价结论。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tut-block">
+        <h3><span class="zone-index">03</span>面试场景应对</h3>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">面试官给出任何商品时，全程动态响应，无需提前准备：</p>
+        <ol class="tut-list">
+          <li>打开该商品的 1688 详情页。</li>
+          <li>在「导入书签」页勾选「将此页商品设为新目标款」。</li>
+          <li>点书签 → 自动创建目标款并导入该商品。</li>
+          <li>再搜同类关键词，点书签批量导入候选。</li>
+          <li>回工作台点「执行视觉匹配」→ 出分层结果，继续比价与询价。</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+
+// ================= Tab 切换 =================
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  const tabEl = document.getElementById('tab-' + name);
+  if (tabEl) tabEl.classList.add('active');
+  const navEl = document.querySelector('.nav-tab[data-tab="' + name + '"]');
+  if (navEl) navEl.classList.add('active');
+  const titles = {
+    home: ['工作台', '以款找源 · 全网比价'],
+    import: ['导入书签', '从 1688 页面一键抓取候选'],
+    tutorial: ['使用说明', '快速上手与面试演示'],
+  };
+  const t = titles[name] || titles.home;
+  document.getElementById('page-title').textContent = t[0];
+  document.getElementById('page-sub').textContent = t[1];
+  document.getElementById('pipeline').classList.toggle('is-hidden', name !== 'home');
+  if (name === 'import') refreshImportTargets(currentTargetId);
+  window.scrollTo({ top: 0 });
+}
+
+let currentTargetId = null;
+let currentTarget = null;
+let shops = [];
+let inquiries = [];
+let targetsCount = 0;
+let lastMatchResult = null;
+let importCurrentTargetId = null;
+
+async function api(path, opts={}) {
+  let r;
+  try {
+    r = await fetch(path, {headers:{'Content-Type':'application/json'}, ...opts});
+  } catch (e) {
+    return { error: '网络请求失败：' + (e && e.message ? e.message : e) };
+  }
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = null; }
+  if (!r.ok || d === null) {
+    const detail = (d && d.error) ? '：' + d.error : '';
+    return { error: `服务端错误（HTTP ${r.status}）${detail}` };
+  }
+  return d;
+}
+async function apiForm(path, formData) {
+  const r = await fetch(path, {method:'POST', body: formData});
+  return r.json();
+}
+
+// ================= 目标款 =================
+async function refreshTargets() {
+  const ts = await api('/api/targets');
+  if (!Array.isArray(ts)) return;
+  targetsCount = ts.length || 0;
+  const statEl = document.getElementById('stat-targets');
+  if (statEl) statEl.textContent = targetsCount;
+
+  // 顶栏切换器列表
+  const pop = document.getElementById('switcher-options');
+  if (pop) {
+    pop.innerHTML = ts.length ? ts.map(t => `
+      <button type="button" class="ts-option ${t.id===currentTargetId?'on':''}" onclick="selectTarget('${t.id}')">
+        <span class="ts-thumb">${t.image_paths && t.image_paths.length ? `<img src="${t.image_paths[0]}" alt="">` : '<i></i>'}</span>
+        <span class="ts-name">${escapeHtml(t.name)}</span>
+        <span class="ts-meta">${escapeHtml(t.category || '')}</span>
+      </button>`).join('') : '<div class="ts-empty">还没有目标款，先创建一个</div>';
+  }
+
+  // 当前目标款展示
+  const mine = ts.find(t=>t.id===currentTargetId);
+  currentTarget = mine || null;
+  const nameEl = document.getElementById('target-name');
+  const metaEl = document.getElementById('target-meta');
+  const prevEl = document.getElementById('target-preview');
+  const delBtn = document.getElementById('btn-delete-target');
+  const swName = document.getElementById('switcher-name');
+  const swThumb = document.getElementById('switcher-thumb');
+  if (mine) {
+    if (nameEl) nameEl.textContent = mine.name;
+    if (metaEl) {
+      // 元信息 chips：品类 / 参考价 / 结构化属性标签化，描述另起一行
+      const chip = s => `<span class="attr-chip">${escapeHtml(s)}</span>`;
+      const chips = [];
+      if (mine.category) chips.push(chip(mine.category));
+      if (mine.reference_price != null) chips.push(chip('参考价 ¥' + Number(mine.reference_price).toFixed(2)));
+      for (const [k, v] of Object.entries(mine.attributes || {})) chips.push(chip(`${k}: ${v}`));
+      metaEl.innerHTML = (chips.join('') || '<span class="muted">暂无属性</span>')
+        + (mine.description ? `<div style="margin-top:4px">${escapeHtml(mine.description)}</div>` : '');
+    }
+    if (prevEl) prevEl.innerHTML = (mine.image_paths && mine.image_paths.length) ? `<img class="thumb" src="${mine.image_paths[0]}" alt="目标款图">` : '';
+    if (delBtn) delBtn.disabled = false;
+    if (swName) swName.textContent = mine.name;
+    if (swThumb) swThumb.innerHTML = (mine.image_paths && mine.image_paths.length) ? `<img src="${mine.image_paths[0]}" alt="">` : '<i></i>';
+  } else {
+    if (nameEl) nameEl.textContent = '未选择目标款';
+    if (metaEl) metaEl.textContent = '创建或切换一个目标款，开始比价工作流';
+    if (prevEl) prevEl.innerHTML = '';
+    if (delBtn) delBtn.disabled = true;
+    if (swName) swName.textContent = '未选择目标款';
+    if (swThumb) swThumb.innerHTML = '<i></i>';
+  }
+  updatePipeline();
+}
+
+function deleteCurrentTarget() {
+  if (!currentTargetId || !currentTarget) return;
+  deleteTarget(currentTargetId, currentTarget.name || '');
+}
+
+// file 控件文件名回显（label 化按钮的配套）
+document.addEventListener('change', e => {
+  if (!e.target.matches || !e.target.matches('input[type="file"]')) return;
+  const holder = (e.target.closest('label') && e.target.closest('label').parentElement)
+    || e.target.closest('.field, .sub-row');
+  const nameEl = holder && holder.querySelector('.file-name');
+  if (nameEl) nameEl.textContent = e.target.files.length ? e.target.files[0].name : '未选择';
+});
+
+async function deleteTarget(id, name) {
+  if (!confirm('确定删除目标款《' + name + '》？\n\n该目标款下的所有候选商品、询价和报价都会被一并删除，且无法恢复。')) return;
+  const r = await api(`/api/targets/${id}`, {method:'DELETE'});
+  if (r.ok) {
+    const d = r.deleted || {};
+    if (currentTargetId === id) {
+      currentTargetId = null;
+      lastMatchResult = null;
+      document.getElementById('result').innerHTML = '<div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
+      document.getElementById('workbench').innerHTML = '<p class="muted">请先选择或创建一个目标款</p>';
+      document.getElementById('btn-export').disabled = true;
+    }
+    await refreshTargets();
+    await refreshInquiries();
+    try { await refreshImportTargets(currentTargetId); } catch(e) {}
+    alert('✅ 已删除\n商品 ' + (d.product||0) + ' 个、询价 ' + (d.inquiry||0) + ' 条、报价 ' + (d.quote||0) + ' 条');
+  } else {
+    alert('❌ 删除失败：' + (r.error || '未知错误'));
+  }
+}
+
+function selectTarget(id) {
+  currentTargetId = id;
+  lastMatchResult = null;
+  toggleSwitcher(false);
+  syncCurrentTarget(id);   // 同步给书签使用
+  refreshTargets();
+  refreshInquiries();
+  loadCachedComparison();  // 自动回显已缓存的比价结论（命中缓存零成本）
+  loadAgentHistory();      // 按目标款切换对话记忆
+}
+
+async function createTarget() {
+  const name = document.getElementById('ts-name').value.trim();
+  if (!name) { alert('先填写目标款名称'); return; }
+  const form = new FormData();
+  form.append('name', name);
+  form.append('description', document.getElementById('ts-desc').value || '');
+  form.append('attributes_json', document.getElementById('ts-attr').value || '{}');
+  form.append('reference_price', document.getElementById('ts-ref').value || '');
+  form.append('category', document.getElementById('ts-cat').value || '');
+  const file = document.getElementById('ts-image').files[0];
+  if (file) form.append('image', file);
+  const t = await apiForm('/api/targets', form);
+  if (!t || !t.id) {
+    alert('❌ 创建失败：' + (t && t.error ? t.error : '未知错误'));
+    return;
+  }
+  currentTargetId = t.id;
+  toggleTargetForm(false);
+  await syncCurrentTarget(t.id);   // 新目标款立即成为当前款
+  await refreshTargets();          // 刷新首页展示
+  await refreshImportTargets(t.id); // 刷新导入页下拉框，并选中新目标款
+  await refreshInquiries();
+}
+
+// 新建目标款表单开合
+function openNewTargetForm() {
+  toggleSwitcher(false);
+  const form = document.getElementById('new-target-form');
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('ts-name').focus();
+}
+function toggleTargetForm(show) {
+  document.getElementById('new-target-form').hidden = !show;
+}
+
+// 顶栏切换器开合
+function toggleSwitcher(force) {
+  const pop = document.getElementById('switcher-pop');
+  if (!pop) return;
+  const open = force !== undefined ? force : !pop.classList.contains('open');
+  pop.classList.toggle('open', open);
+}
+document.addEventListener('click', e => {
+  const pop = document.getElementById('switcher-pop');
+  if (!pop || !pop.classList.contains('open')) return;
+  // 点击弹层内部、顶栏开关按钮、或分区里的「切换」按钮时，不关闭
+  if (!e.target.closest('#switcher-pop') && !e.target.closest('#btn-switch')
+      && !e.target.closest('#btn-switch-zone')) toggleSwitcher(false);
+});
+
+// ================= 流程步骤条 =================
+async function updatePipeline() {
+  const steps = document.querySelectorAll('.pipe-step');
+  if (!steps.length) return;
+  let products = [];
+  if (currentTargetId) {
+    try { products = await api(`/api/targets/${currentTargetId}/products`); } catch (e) {}
+  }
+  const matched = lastMatchResult
+    ? ((lastMatchResult.exact || []).length + (lastMatchResult.equivalent || []).length)
+    : products.filter(p => p.tier === 'exact' || p.tier === 'equivalent').length;
+  const inquiryCount = (inquiries || []).length;
+  const quoted = (inquiries || []).filter(q => q.status === 'quoted').length;
+  const counts = [currentTargetId ? 1 : 0, products.length, matched, inquiryCount, quoted];
+
+  let seenActive = false;
+  counts.forEach((c, i) => {
+    const el = steps[i];
+    if (!el) return;
+    el.classList.remove('done', 'active', 'todo');
+    if (c > 0) el.classList.add('done');
+    else if (!seenActive && (i === 0 || counts[i-1] > 0)) { el.classList.add('active'); seenActive = true; }
+    else el.classList.add('todo');
+    const badge = el.querySelector('.pipe-count');
+    if (badge) badge.textContent = c > 0 ? String(c) : '';
+  });
+
+  const sp = document.getElementById('stat-products');
+  if (sp) sp.textContent = products.length;
+
+  // 店铺数随当前目标款联动：统计该目标款下候选商品涉及的卖家数
+  const ss = document.getElementById('stat-shops');
+  if (ss) ss.textContent = new Set(products.map(p => p.shop_id).filter(Boolean)).size;
+}
+document.querySelectorAll('.pipe-step').forEach(el => {
+  el.addEventListener('click', () => {
+    const zone = document.getElementById(el.dataset.zone);
+    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// ================= 门店 =================
+async function loadShops() {
+  const list = await api('/api/shops');
+  shops = Array.isArray(list) ? list : [];
+  const sel = document.getElementById('shop-select');
+  sel.innerHTML = shops.map(s => `<option value="${s.id}">${escapeHtml(s.name)}${s.location?escapeHtml(' · '+s.location):''}</option>`).join('');
+  updatePipeline();
+}
+async function createShop() {
+  const name = document.getElementById('shop-name').value.trim();
+  if (!name) return alert('填写门店名');
+  await api('/api/shops', {method:'POST', body: JSON.stringify({name})});
+  document.getElementById('shop-name').value = '';
+  loadShops();
+}
+
+// ================= 候选商品 =================
+async function createProduct() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const sel = document.getElementById('shop-select');
+  if (!sel.value) return alert('先添加并选择门店');
+  const form = new FormData();
+  form.append('target_style_id', currentTargetId);
+  form.append('shop_id', sel.value);
+  form.append('title', document.getElementById('prod-title').value.trim());
+  form.append('attributes_json', document.getElementById('prod-attr').value || '{}');
+  form.append('listed_price', document.getElementById('prod-price').value || '');
+  const file = document.getElementById('prod-image').files[0];
+  if (file) form.append('image', file);
+  const r = await apiForm('/api/products', form);
+  if (r && r.error) { alert('❌ 添加失败：' + r.error); return; }
+  document.getElementById('prod-title').value = '';
+  document.getElementById('prod-image').value = '';
+  document.getElementById('prod-attr').value = '';
+  document.getElementById('prod-price').value = '';
+  updatePipeline();
+}
+
+// ================= 匹配 / 比价 =================
+async function runMatch() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const btn = document.getElementById('btn-match');
+  const box = document.getElementById('progress');
+  const bar = document.getElementById('progress-bar');
+  const text = document.getElementById('progress-text');
+
+  btn.disabled = true;
+  btn.textContent = '匹配中…';
+  box.style.display = 'block';
+  bar.style.width = '5%';
+  text.textContent = '正在准备…';
+
+  // 假进度：视觉匹配是服务端批量执行的，无法实时回传，
+  // 用平滑递增的进度条提示用户还在工作（到 90% 等待完成）
+  let pct = 5;
+  const timer = setInterval(() => {
+    if (pct < 90) {
+      pct += Math.max(0.6, (90 - pct) * 0.04);
+      if (pct > 90) pct = 90;
+      bar.style.width = pct.toFixed(1) + '%';
+      text.textContent = `视觉比对中… ${pct.toFixed(0)}%（并发匹配，请稍候）`;
+    }
+  }, 400);
+
+  let r;
+  try {
+    r = await api(`/api/targets/${currentTargetId}/match`, {method:'POST'});
+  } finally {
+    clearInterval(timer);
+    btn.disabled = false;
+    btn.textContent = '执行视觉匹配';
+  }
+
+  if (r && r.error) {
+    box.style.display = 'none';
+    alert('匹配失败：' + r.error);
+    return;
+  }
+
+  bar.style.width = '100%';
+  const st = r.stats || {};
+  text.textContent = `完成：本次匹配 ${st.matched_now ?? '?'} 个，复用 ${st.reused ?? 0} 个，耗时 ${st.elapsed_sec ?? '?'} 秒`;
+  setTimeout(() => { box.style.display = 'none'; bar.style.width = '0%'; }, 6000);
+
+  // 记录最近一次匹配结果，供导出与步骤条使用
+  lastMatchResult = r;
+  document.getElementById('btn-export').disabled = false;
+
+  let html = '';
+  const render = (title, list, cls) => {
+    if (!list.length) return '';
+    let h = `<div class="match-col"><h3>${title} <span class="n">${list.length}</span></h3>`;
+    h += list.map(m => {
+      const img = m.product && m.product.image_paths && m.product.image_paths.length
+        ? `<img src="${m.product.image_paths[0]}" alt="">` : '';
+      const price = m.product && m.product.listed_price != null && m.product.listed_price > 0
+        ? `<span class="price">¥${Number(m.product.listed_price).toFixed(2)}</span>`
+        : '<span class="muted">未抓到价</span>';
+      return `<div class="match-card">
+        ${img}
+        <div class="info">
+          <div class="shop">${escapeHtml(m.shop_name || m.product_id || '')}${price}</div>
+          <div class="tag ${cls}">${m.status}</div>
+          <div class="reason">${escapeHtml(m.reason || '')}</div>
+        </div>
+      </div>`;
+    }).join('');
+    h += '</div>';
+    return h;
+  };
+  html += render('完全同款', r.exact, 'exact');
+  html += render('等效替代', r.equivalent, 'equiv');
+  html += render('已排除', r.rejected, 'other');
+  html += render('未核验候选', r.candidate, 'other');
+  document.getElementById('result').innerHTML = html || '<div class="empty">无匹配结果</div>';
+  updatePipeline();
+}
+
+// ================= 智能体 =================
+function setGoal(text) {
+  document.getElementById('agent-goal').value = text;
+  runAgent();
+}
+
+const TOOL_CN = {
+  list_targets: '列出目标款',
+  inspect_target: '查看目标款详情',
+  match_products: '执行视觉匹配',
+  compare_prices: '生成比价结论',
+  inquiry_script: '生成询价话术',
+  make_search_link: '生成1688搜索链接',
+  import_products: '导入商品链接',
+  plan_search: '规划搜索策略',
+  auto_import: '浏览器自动搜索导入',
+  create_plan: '创建采购计划',
+  get_plan: '查看计划进度',
+  update_plan_step: '更新计划进度',
+};
+
+const PLAN_MARK = { done: '✅', in_progress: '▶️', blocked: '⚠️', pending: '⬜' };
+
+function renderPlanBlock(plan) {
+  if (!plan || !plan.steps || !plan.steps.length) return '';
+  const done = plan.steps.filter(s => s.status === 'done').length;
+  let html = `<div class="trace-step"><div class="rnd">PLAN</div>
+    <div class="trace-thought"><span class="trace-label">采购计划</span>${escapeHtml(plan.goal)}
+    <span style="opacity:.7">（${done}/${plan.steps.length}）${plan.status === 'done' ? ' · 已全部完成' : ''}</span></div>`;
+  for (const s of plan.steps) {
+    const mark = PLAN_MARK[s.status] || '⬜';
+    const note = s.note ? ` <span style="opacity:.6">${escapeHtml(s.note)}</span>` : '';
+    html += `<div class="trace-args">${mark} 步骤${s.index}：${escapeHtml(s.action)}${note}</div>`;
+  }
+  return html + `</div>`;
+}
+
+// 智能体对话历史（持久化在 agent_run 表，刷新/重开都在）
+async function loadAgentHistory() {
+  const box = document.getElementById('agent-history');
+  if (!box) return;
+  let runs = [];
+  try {
+    const q = currentTargetId ? `?target_id=${encodeURIComponent(currentTargetId)}` : '';
+    runs = await api(`/api/agent/history${q}`);
+  } catch (e) { runs = []; }
+  if (!runs || !runs.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = runs.map(r => {
+    const total = (r.prompt_tokens || 0) + (r.completion_tokens || 0);
+    const when = (r.created_at || '').slice(5, 16).replace('T', ' ');
+    return `<details class="hist-item">
+      <summary class="hist-summary">
+        <span class="hist-goal">${escapeHtml((r.goal || '').slice(0, 40))}</span>
+        <span class="hist-meta">${when} · ${total} tokens</span>
+      </summary>
+      <div class="hist-body">${escapeHtml(r.final_answer || '（无结论）')}</div>
+    </details>`;
+  }).join('');
+}
+
+async function clearAgentHistory() {
+  if (!confirm('确定清空' + (currentTargetId ? '该目标款' : '全部') + '的智能体对话历史？')) return;
+  const q = currentTargetId ? `?target_id=${encodeURIComponent(currentTargetId)}` : '';
+  await api(`/api/agent/history${q}`, {method: 'DELETE'});
+  loadAgentHistory();
+}
+
+async function runAgent() {
+  const goal = (document.getElementById('agent-goal').value || '').trim();
+  if (!goal) return alert('请先输入你想让智能体做什么');
+
+  const btn = document.getElementById('btn-agent');
+  const box = document.getElementById('agent-trace');
+  btn.disabled = true;
+  btn.textContent = '思考中…';
+  box.innerHTML = `<div class="trace-step"><div class="rnd">RUNNING</div>
+    <div class="trace-thought"><span class="trace-label">启动</span>智能体正在规划任务…（每一步都会调用真实工具，可能需要几十秒）</div></div>`;
+
+  let r;
+  try {
+    r = await api('/api/agent/run', {
+      method: 'POST',
+      body: JSON.stringify({goal, target_id: currentTargetId}),
+    });
+  } catch (e) {
+    box.innerHTML = `<div class="agent-final" style="background:var(--danger-soft);border-color:var(--danger)"><span class="trace-label" style="color:var(--danger)">失败</span><div class="final-body">请求失败：${escapeHtml(e.message)}</div></div>`;
+    btn.disabled = false; btn.textContent = '分析';
+    return;
+  } finally {
+    if (btn.textContent === '思考中…') {
+      btn.disabled = false;
+      btn.textContent = '分析';
+    }
+  }
+
+  if (r.error) {
+    box.innerHTML = `<div class="agent-final" style="background:var(--danger-soft);border-color:var(--danger)"><span class="trace-label" style="color:var(--danger)">错误</span><div class="final-body">${escapeHtml(r.error)}</div></div>`;
+    return;
+  }
+
+  const steps = r.steps || [];
+  let html = '';
+  for (const s of steps) {
+    html += `<div class="trace-step"><div class="rnd">R${s.round}</div>`;
+    if (s.thought) {
+      html += `<div class="trace-thought"><span class="trace-label">思考</span>${renderMarkdown(s.thought)}</div>`;
+    }
+    if (s.tool) {
+      const cn = TOOL_CN[s.tool] || s.tool;
+      html += `<div class="trace-tool">▸ ${cn}<span class="raw">${escapeHtml(s.tool)}</span></div>`;
+      const argsStr = s.args && Object.keys(s.args).length ? JSON.stringify(s.args) : '';
+      if (argsStr) html += `<div class="trace-args">参数 ${escapeHtml(argsStr)}</div>`;
+      if (s.observation) {
+        html += `<div class="trace-obs"><span class="trace-label">观察</span>${escapeHtml(s.observation.slice(0, 600))}${s.observation.length > 600 ? '\n…(已省略)' : ''}</div>`;
+      }
+    }
+    html += `</div>`;
+  }
+  if (r.plan) {
+    html += renderPlanBlock(r.plan);
+  }
+  if (r.final_answer) {
+    html += `<div class="agent-final"><span class="trace-label">结论</span><div class="final-body">${renderMarkdown(r.final_answer)}</div></div>`;
+  }
+  if (r.usage) {
+    const u = r.usage;
+    const total = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
+    const cost = (u.cost_cny !== null && u.cost_cny !== undefined)
+      ? `，约 ¥${Number(u.cost_cny).toFixed(3)}` : '';
+    html += `<div class="trace-usage">本次消耗 ${total} tokens（输入 ${u.prompt_tokens || 0} / 输出 ${u.completion_tokens || 0}，${u.requests || 0} 次调用）${cost}</div>`;
+  }
+  box.innerHTML = html || '<p class="muted">智能体没有返回内容</p>';
+  loadAgentHistory();   // 历史里追加本次运行
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+// 轻量 Markdown 渲染：先转义（防 XSS），再还原受支持的语法
+function renderMarkdown(text) {
+  if (!text) return '';
+  let s = escapeHtml(text);
+
+  // 代码块 ```...```
+  s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (m, code) =>
+    `<pre class="md-pre">${code}</pre>`);
+
+  // 行内代码 `xxx`
+  s = s.replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>');
+
+  // 链接 [文字](url) —— 只允许 http(s)，且新窗口打开
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (m, label, url) =>
+      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+
+  // 裸链接
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+    (m, pre, url) =>
+      `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+
+  // 粗体 **xxx**
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+
+  // 表格：| a | b | 形式
+  s = s.replace(/(?:^\|.*\|\s*$\n?)+/gm, block => {
+    const lines = block.trim().split('\n').map(l => l.trim());
+    if (lines.length < 2) return block;
+    const cells = l => l.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const head = cells(lines[0]);
+    const isSep = /^\|?[\s:-]+\|/.test(lines[1]);
+    const body = lines.slice(isSep ? 2 : 1);
+    let t = '<table class="md-tbl">';
+    t += '<tr>' + head.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    for (const row of body) {
+      t += '<tr>' + cells(row).map(c => `<td>${c}</td>`).join('') + '</tr>';
+    }
+    t += '</table>';
+    return t;
+  });
+
+  // 标题 ###
+  s = s.replace(/^#{1,6}\s+(.+)$/gm, '<div class="md-h">$1</div>');
+
+  // 换行
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+// 导出比价表为 CSV（Excel 可直接打开，UTF-8 BOM 防乱码）
+async function exportComparison() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const r = await api(`/api/targets/${currentTargetId}/comparison`, {method:'POST'});
+  const rows = sortCmpRows(r.rows || []);
+  if (!rows.length) return alert('暂无可导出的比价数据');
+
+  const headers = ['店铺', '商品', '价格', '来源', '页面标价', 'MOQ', '含税', '运费', '现货', '发货时效', '阶梯价',
+                   '匹配状态', '可比', '条件备注', '链接'];
+  const tierMap = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
+  const srcMap = {listed:'标价', quoted:'报价'};
+  const taxMap = {included:'含税', excluded:'不含税', unknown:'未知'};
+  const stockMap = {in_stock:'有现货', pre_sale:'预售', custom:'定制', unknown:'未知'};
+  const fmtTiers = t => (t || []).map(x => `${x.qty}件及以上${x.price}元`).join('；');
+
+  const esc = v => {
+    const s = (v === null || v === undefined) ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+
+  const lines = [headers.join(',')];
+  for (const x of rows) {
+    lines.push([
+      esc(x.shop_name), esc(x.title), esc(x.price), esc(srcMap[x.price_source] || x.price_source),
+      esc(x.listed_price ?? ''), esc(x.moq ?? ''), esc(taxMap[x.tax] || x.tax || '未知'),
+      esc(x.includes_shipping === true ? '包邮' : x.includes_shipping === false ? '不包邮' : '未知'),
+      esc(stockMap[x.stock_status] || '未知'),
+      esc(x.lead_time_hours !== null && x.lead_time_hours !== undefined
+          ? (x.lead_time_hours < 24 ? `${x.lead_time_hours}小时内` : `${Math.round(x.lead_time_hours/24)}天内`) : ''),
+      esc(fmtTiers(x.tiers)), esc(tierMap[x.tier] || x.tier), esc(x.comparable ? '是' : '否'),
+      esc(x.condition_note), esc(x.url),
+    ].join(','));
+  }
+
+  // 附上综述与建议
+  lines.push('');
+  lines.push(esc('综述') + ',' + esc(r.summary));
+  lines.push(esc('建议') + ',' + esc(r.recommendation));
+  if (r.negotiation_script) {
+    lines.push(esc('议价话术') + ',' + esc(r.negotiation_script.replace(/\n/g, ' ')));
+  }
+
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = URL.createObjectURL(blob);
+  a.download = `比价表_${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+async function downloadReport() {
+  if (!currentTargetId) return alert('先选择目标款');
+  const r = await api(`/api/targets/${currentTargetId}/report`);
+  if (!r || r.error) return alert('生成失败：' + (r && r.error ? r.error : '未知错误'));
+  const blob = new Blob([r.markdown], {type: 'text/markdown;charset=utf-8'});
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  a.href = URL.createObjectURL(blob);
+  a.download = `比价报告_${(r.target || '目标款').replace(/[\\/:*?"<>|]/g, '_')}_${ts}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+const TIER_CN = {exact:'✅ 完全同款', equivalent:'⚠️ 等效替代', unverified:'· 未核验', rejected:'· 已排除'};
+const SRC_CN = {listed:'标价', quoted:'报价'};
+const TAX_CN = {included:'含税', excluded:'不含税', unknown:'含税未知'};
+const STOCK_CN = {in_stock:'✅ 有现货', pre_sale:'🕐 预售', custom:'🛠 定制', unknown:'现货未知'};
+
+// 比价行排序：匹配度高在上（完全同款>等效替代>未核验>已排除），同层级可比者在前、价格升序
+const TIER_RANK = { exact: 0, equivalent: 1, unverified: 2, rejected: 3 };
+function sortCmpRows(rows) {
+  return (rows || []).slice().sort((a, b) => {
+    const ta = TIER_RANK[a.tier] ?? 9, tb = TIER_RANK[b.tier] ?? 9;
+    if (ta !== tb) return ta - tb;
+    const ca = a.comparable ? 0 : 1, cb = b.comparable ? 0 : 1;
+    if (ca !== cb) return ca - cb;
+    const pa = (a.price == null ? Infinity : Number(a.price));
+    const pb = (b.price == null ? Infinity : Number(b.price));
+    return pa - pb;
+  });
+}
+
+// 发货时效（小时）：<24h 显示「N小时」，≥24h 折算「N天内」
+function fmtLeadTime(h) {
+  if (h === null || h === undefined) return null;
+  return h < 24 ? `${h}小时内发货` : `${Math.round(h / 24)}天内发货`;
+}
+
+// 成交条件六维：只展示已知项，全未知收敛为「—」（避免整列"未知"噪音）
+function fmtConditions(x) {
+  const unknown = v => v === null || v === undefined || v === '' || v === 'unknown';
+  const parts = [];
+  if (x.moq) parts.push(`MOQ ${x.moq}`);
+  if (!unknown(x.tax)) parts.push(TAX_CN[x.tax] || x.tax);
+  if (x.includes_shipping === true) parts.push('包邮');
+  else if (x.includes_shipping === false) parts.push('不包邮');
+  if (!unknown(x.stock_status)) parts.push(STOCK_CN[x.stock_status] || x.stock_status);
+  const lead = fmtLeadTime(x.lead_time_hours);
+  if (lead) parts.push(`<b style="color:var(--accent-deep)">${lead}</b>`);
+  if (x.tiers && x.tiers.length) {
+    parts.push('阶梯价 ' + x.tiers.map(t => `${t.qty}件↑${Number(t.price).toFixed(2)}元`).join('，'));
+  }
+  return parts.length ? parts.join('<br>') : '<span class="muted">—</span>';
+}
+
+// ---- 数据时效：价格数据距今天数 → 分级提示（<7 天常态，7~30 天标黄，>30 天标灰）
+function priceAge(iso) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return null;
+  const days = Math.max(0, Math.floor((Date.now() - t) / 86400000));
+  if (days < 7) return { days, cls: '', label: days === 0 ? '今日数据' : `${days}天前` };
+  if (days < 30) return { days, cls: 'age-warn', label: `${days}天前` };
+  return { days, cls: 'age-stale', label: `${days}天前` };
+}
+function ageBadge(iso) {
+  const a = priceAge(iso);
+  if (!a) return '';
+  const tip = a.cls === 'age-warn' ? '价格数据已超 7 天，可能已变动，建议重新核验'
+    : a.cls === 'age-stale' ? '价格数据已超 30 天，强烈建议重新询价核验'
+    : '价格数据时间';
+  return `<br><span class="age ${a.cls}" title="${tip}">${a.label}</span>`;
+}
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ---- MOQ 归一：折算价展示（normalized_price + norm_note 由后端折算）
+function normHtml(x) {
+  if (!x.norm_note || x.normalized_price === null || x.normalized_price === undefined) return '';
+  return `<br><span class="muted" style="font-size:11px">折算 ¥${Number(x.normalized_price).toFixed(2)}（${escapeHtml(x.norm_note)}）</span>`;
+}
+
+function renderComparison(r) {
+  let html = `<div class="cmp-summary"><div class="trace-label" style="color:var(--accent-deep)">综述</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.summary||''}</p></div>`;
+  // 结论元信息：生成时间 + 结论时效 + 重算入口
+  const gen = fmtDateTime(r.generated_at);
+  const genAge = priceAge(r.generated_at);
+  if (gen) {
+    const genTip = genAge && genAge.cls ? '，输入数据未变化时结论沿用缓存' : '';
+    html += `<div class="cmp-meta"><span>结论生成于 ${gen}`
+      + (genAge && genAge.cls === 'age-warn' ? '<span class="age age-warn" title="结论较早，若数据有更新请重算">7天前</span>' : '')
+      + (genAge && genAge.cls === 'age-stale' ? '<span class="age age-stale" title="结论较早，建议重算">30天前</span>' : '')
+      + `</span><button type="button" class="rebtn" onclick="runComparison(true)" title="跳过缓存强制重算（含议价话术）">重算结论</button></div>`;
+  }
+  if (r.rows && r.rows.length) {
+    html += `<div class="cmp-scroll"><table><thead><tr><th>店铺</th><th>商品</th><th>价格</th><th>来源</th><th>匹配</th>`
+          + `<th>可比性</th><th>成交条件</th><th>备注</th></tr></thead><tbody>`;
+    let bestMarked = false;
+    const sortedRows = sortCmpRows(r.rows);
+    html += sortedRows.map(x => {
+      const price = (x.price === null || x.price === undefined) ? '-' : Number(x.price).toFixed(2);
+      const listed = (x.listed_price !== null && x.listed_price !== undefined && x.price_source === 'quoted')
+        ? `<br><span class="muted" style="font-size:11px">标价 ${Number(x.listed_price).toFixed(2)}</span>` : '';
+      const norm = normHtml(x);
+      const age = ageBadge(x.price_at || x.quoted_at);
+      const title = (x.title||'').length > 22 ? x.title.slice(0,22)+'…' : (x.title||'');
+      // 行已按「可比优先、归一价升序」排好，第一个可硬比价行即当前最低同款
+      let rowCls = '';
+      if (x.comparable && !bestMarked) { rowCls = ' class="cmp-best"'; bestMarked = true; }
+      const compBadge = x.comparable
+        ? '<span class="cmp-badge ok">可硬比价</span>'
+        : '<span class="cmp-badge warn">仅参考</span>';
+      return `<tr${rowCls}>
+        <td>${escapeHtml(x.shop_name)||''}</td>
+        <td title="${escapeAttr(x.title)}">${escapeHtml(title)}</td>
+        <td><b>¥${price}</b>${listed}${norm}${age}</td>
+        <td>${SRC_CN[x.price_source]||x.price_source||'-'}</td>
+        <td>${TIER_CN[x.tier]||x.tier||'-'}</td>
+        <td>${compBadge}</td>
+        <td class="cmp-cond">${fmtConditions(x)}</td>
+        <td class="muted">${escapeHtml(x.condition_note)}</td>
+      </tr>`;
+    }).join('');
+    html += '</tbody></table></div>';
+    html += `<p class="muted" style="font-size:12px;margin-top:10px">可比性八维：<b>价格 · MOQ · 含税 · 运费 · 现货 · 发货时效 · 阶梯价 · 匹配层级</b>。`
+          + `仅「完全同款」行可硬比价（橙色底 = 当前最低同款）；等效替代 / 未核验 / 已排除仅供参考，不进入比价结论。`
+          + `阶梯价与 MOQ 门槛已按 100 件基准量折算归一价；所有价格为抓取时点快照，下单前请重新确认。</p>`;
+  }
+  html += `<div class="cmp-summary" style="margin-top:16px"><div class="trace-label" style="color:var(--accent-deep)">建议</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.recommendation||''}</p></div>`;
+  if (r.negotiation_script) html += `<div style="margin-top:12px"><div class="trace-label" style="color:var(--accent-deep)">议价话术</div><pre style="margin-top:6px">${r.negotiation_script}</pre></div>`;
+  document.getElementById('result').innerHTML = html;
+  updatePipeline();
+}
+
+async function runComparison(force = false) {
+  if (!currentTargetId) return alert('先选择目标款');
+  if (force) {
+    const btn = document.querySelector('#result .rebtn');
+    if (btn) { btn.disabled = true; btn.textContent = '重算中…'; }
+  }
+  const r = await api(`/api/targets/${currentTargetId}/comparison${force ? '?refresh=true' : ''}`, {method:'POST'});
+  if (r.error) { alert('生成失败：' + r.error); return; }
+  renderComparison(r);
+}
+
+// 切款/首载时自动回显：只读与当前指纹匹配的缓存结论（零 LLM，未命中静默降级）
+async function loadCachedComparison() {
+  const el = document.getElementById('result');
+  if (!currentTargetId || !el) return;
+  el.innerHTML = '<div class="empty" style="opacity:.6">正在加载比价结论…</div>';
+  const r = await api(`/api/targets/${currentTargetId}/comparison`).catch(() => null);
+  // 请求期间用户已切到别的目标款，丢弃过期结果
+  if (!r || r.error || r.cached === false) {
+    if (currentTargetId && r && r.cached === false) {
+      el.innerHTML = '<div class="empty">尚无比价结论。先「执行视觉匹配」分出同款与替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
+    }
+    return;
+  }
+  renderComparison(r);
+}
+
+// ================= 询价工作台 =================
+const STATUS_CN = {pending:'未询价', draft:'话术已备', sent:'已发送', replied:'已回复', quoted:'已报价', closed:'已关闭'};
+
+async function refreshInquiries() {
+  const el = document.getElementById('workbench');
+  if (!currentTargetId) { el.innerHTML = '<p class="muted">请先选择或创建一个目标款</p>'; inquiries = []; renderInqChips(); updatePipeline(); return; }
+  inquiries = null;          // null = 加载中：显示加载态而非"暂无"空态
+  renderWorkbench();
+  renderInqChips();
+  inquiries = await api(`/api/targets/${currentTargetId}/inquiries`);
+  if (!Array.isArray(inquiries)) inquiries = [];
+  renderWorkbench();
+  renderInqChips();
+  updatePipeline();
+}
+let inqFilter = 'all';
+const INQ_FILTERS = [
+  { key: 'all',        label: '全部',     match: q => true },
+  { key: 'exact',      label: '完全同款', match: q => (q.tier || 'unverified') === 'exact' },
+  { key: 'equivalent', label: '等效替代', match: q => (q.tier || 'unverified') === 'equivalent' },
+  { key: 'quoted',     label: '已报价',   match: q => q.price_source === 'quoted' || q.status === 'quoted' },
+  { key: 'unverified', label: '未核验',   match: q => (q.tier || 'unverified') === 'unverified' && q.price_source !== 'quoted' },
+  { key: 'rejected',   label: '已排除',   match: q => (q.tier || 'unverified') === 'rejected' },
+];
+function renderInqChips() {
+  const el = document.getElementById('inq-chips');
+  if (!el) return;
+  if (!inquiries || !inquiries.length) { el.innerHTML = ''; return; }
+  el.innerHTML = INQ_FILTERS.map(f => {
+    const n = inquiries.filter(f.match).length;
+    if (f.key !== 'all' && n === 0) return '';
+    const on = inqFilter === f.key;
+    return `<button type="button" class="${on ? 'on' : ''}" onclick="inqFilter='${f.key}';renderInqChips();renderWorkbench()">${f.label} ${n}</button>`;
+  }).join('');
+}
+const INQ_TIER_CN = {exact:'完全同款', equivalent:'等效替代', unverified:'未核验', rejected:'已排除'};
+const INQ_TIER_STYLE = {
+  exact:      {bg:'var(--accent, #b8860b)', fg:'#fff'},
+  equivalent: {bg:'transparent', fg:'var(--accent-deep, #8a6508)', bd:'1px solid var(--accent, #b8860b)'},
+  unverified: {bg:'transparent', fg:'var(--muted, #888)', bd:'1px solid var(--border, #ccc)'},
+  rejected:   {bg:'transparent', fg:'var(--muted, #888)', bd:'1px dashed var(--border, #ccc)'}
+};
+function tierBadge(q) {
+  const out = [];
+  const mk = (bg, fg, bd, label, title) =>
+    `<span title="${title}" style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;line-height:1.7;white-space:nowrap;background:${bg};color:${fg};border:${bd || 'none'};vertical-align:middle">${label}</span>`;
+  const t = q.tier || 'unverified';
+  if (t === 'exact' || t === 'equivalent') {
+    const s = INQ_TIER_STYLE[t];
+    out.push(mk(s.bg, s.fg, s.bd, INQ_TIER_CN[t], '视觉核验分层，与比价结论一致'));
+  }
+  if (q.price_source === 'quoted') {
+    out.push(mk('var(--leaf-soft, #dcefe2)', 'var(--leaf-deep, #2e7d52)', '1px solid var(--leaf-deep, #2e7d52)',
+                '已报价', '卖家已回复真实报价，价格经询价核验'));
+  } else if (t !== 'exact' && t !== 'equivalent') {
+    const s = INQ_TIER_STYLE[t] || INQ_TIER_STYLE.unverified;
+    out.push(mk(s.bg, s.fg, s.bd, INQ_TIER_CN[t] || '未核验', '视觉核验分层，与比价结论一致'));
+  }
+  return out.join(' ');
+}
+function tierPrice(q) {
+  // 标价 0 元 = 书签未抓到有效价格（占位），不能展示成 ¥0.00 误导
+  if (q.price == null || q.price <= 0) return '<span class="muted" title="未抓到有效标价，可重新从 1688 导入或手动补价">未抓到价</span>';
+  const src = q.price_source === 'quoted' ? '<span class="muted" style="font-size:11px">报价</span>' : '<span class="muted" style="font-size:11px">标价</span>';
+  return `<span style="font-variant-numeric:tabular-nums">¥${Number(q.price).toFixed(2)}</span> ${src}`;
+}
+function renderWorkbench() {
+  const el = document.getElementById('workbench');
+  if (inquiries === null) { el.innerHTML = '<div class="empty" style="opacity:.6">加载中…</div>'; return; }
+  if (!inquiries.length) { el.innerHTML = '<div class="empty">暂无候选商品。先在「02 候选商品」添加，或从 1688 书签导入。</div>'; return; }
+  const kw = (document.getElementById('inquiry-search')?.value || '').trim().toLowerCase();
+  let rows = inquiries;
+  const f = INQ_FILTERS.find(x => x.key === inqFilter);
+  if (f && f.key !== 'all') rows = rows.filter(f.match);
+  if (kw) rows = rows.filter(q => (q.shop_name || '').toLowerCase().includes(kw) || (q.title || '').toLowerCase().includes(kw));
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty">没有匹配「${escapeHtml(kw) || INQ_FILTERS.find(x => x.key === inqFilter)?.label || ''}」的条目，<a href="#" onclick="inqFilter='all';document.getElementById('inquiry-search').value='';renderInqChips();renderWorkbench();return false;" style="color:var(--accent-deep,var(--accent))">清除筛选</a></div>`;
+    return;
+  }
+  let html = '<div class="wb-scroll"><table><thead><tr><th>店铺</th><th>商品</th><th>核验 · 价格</th><th>状态</th><th>话术 / 回复</th><th>操作</th></tr></thead><tbody>';
+  for (const q of rows) {
+    const st = STATUS_CN[q.status] || q.status;
+    const thumb = q.image
+      ? `<img class="p-thumb" src="${escapeAttr(q.image)}" alt="" loading="lazy">`
+      : '<span class="p-thumb" style="display:inline-block"></span>';
+    const titleCell = `<div class="p-cell">${thumb}<span>${escapeHtml(q.title||'')}</span></div>`;
+    let cell = '';
+    let actions = '';
+    if (q.status === 'pending') {
+      cell = '<span class="muted">—</span>';
+      actions = `<button class="btn default sm" onclick="makeInquiry('${q.product_id}')">生成话术</button>`;
+    } else {
+      cell = `<details class="script-fold"><summary>${q.status === 'quoted' ? '报价已到 · 点开查看话术 / 回复' : '点开查看话术'}</summary><pre>${escapeHtml(q.script||'')}</pre></details>`;
+      if (q.status === 'draft') {
+        actions = `<button class="btn default sm" onclick="copyScript('${q.id}')">复制</button>
+                   <button class="btn ghost sm" onclick="setStatus('${q.id}','sent')">标记已发送</button>`;
+      } else if (q.status === 'sent') {
+        actions = `<button class="btn default sm" onclick="replyBox('${q.id}')">贴入回复</button>
+                   <button class="btn default sm" onclick="setStatus('${q.id}','closed')">关闭</button>`;
+      } else if (q.status === 'replied' || q.status === 'quoted' || q.status === 'closed') {
+        actions = '<span class="muted">已完成</span>';
+      }
+    }
+    html += `<tr><td>${tierBadge(q)} ${escapeHtml(q.shop_name||'')}</td><td>${titleCell}</td>`
+          + `<td style="white-space:nowrap">${tierPrice(q)}</td>`
+          + `<td><span class="status ${q.status}">${st}</span></td>`
+          + `<td>${cell}</td><td style="white-space:nowrap">${actions}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  if (kw || (f && f.key !== 'all')) html += `<p class="muted" style="margin:8px 2px 0;font-size:12px">命中 ${rows.length} / ${inquiries.length} 条（列表默认按视觉核验分层与价格排序）</p>`;
+  el.innerHTML = html;
+}
+
+async function makeInquiry(productId) {
+  const qty = prompt('拟采购数量（件，可留空）：', '');
+  const body = { target_style_id: currentTargetId, product_id: productId };
+  if (qty && parseInt(qty)) body.buyer_quantity = parseInt(qty);
+  await api('/api/inquiries', {method:'POST', body: JSON.stringify(body)});
+  refreshInquiries();
+}
+async function copyScript(id) {
+  const q = inquiries.find(x => x.id === id);
+  if (!q) return;
+  try { await navigator.clipboard.writeText(q.script); alert('话术已复制'); }
+  catch(e) { prompt('复制以下话术：', q.script); }
+}
+async function setStatus(id, status) {
+  await api(`/api/inquiries/${id}/status`, {method:'POST', body: JSON.stringify({status})});
+  refreshInquiries();
+}
+async function replyBox(id) {
+  const reply = prompt('粘贴卖家回复原文：', '');
+  if (!reply) return;
+  const r = await api(`/api/inquiries/${id}/parse-reply`, {method:'POST', body: JSON.stringify({reply})});
+  if (r.quote) {
+    const tax = r.quote.tax === 'included' ? '含税' : (r.quote.tax === 'excluded' ? '不含税' : '含税未知');
+    const stock = (STOCK_CN[r.quote.stock_status] || '现货未知');
+    const lead = fmtLeadTime(r.quote.lead_time_hours);
+    alert(`已解析报价：${r.quote.price} 元 / MOQ ${r.quote.moq??'-'} / ${tax} / ${stock}${lead ? ' / ' + lead : ''}`);
+  }
+  refreshInquiries();
+}
+
+// ================= 导入书签相关 =================
+async function refreshImportTargets(selectId) {
+  const ts = await api('/api/targets');
+  if (!Array.isArray(ts)) return;
+  const sel = document.getElementById('target-select-import');
+  sel.innerHTML = ts.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+  // 选中优先级：显式传入 > 当前目标款 > 第一个
+  let defId = selectId || null;
+  if (!defId) {
+    const cur = await api('/api/current-target').catch(() => ({}));
+    defId = (cur && cur.id) || (ts.length ? ts[0].id : null);
+  }
+  if (defId) {
+    sel.value = defId;
+    importCurrentTargetId = defId;
+    syncCurrentTarget(defId);
+  }
+  sel.onchange = () => {
+    importCurrentTargetId = sel.value;
+    syncCurrentTarget(sel.value);
+    currentTargetId = sel.value;
+    refreshTargets();
+    refreshInquiries();
+  };
+  renderBM();
+}
+
+// 兼容旧调用名
+async function loadImportTargets() {
+  await refreshImportTargets();
+}
+
+function generateBookmarklet(createNew) {
+  return `(async function(){
+var CREATE_NEW=${createNew};
+var BASE='${location.origin}';
+var API=BASE+'/api/import-product';
+var CREATE_API=BASE+'/api/targets/from-url';
+var CURRENT_API=BASE+'/api/current-target';
+var HOST=location.hostname;
+var PAGE_TYPE=HOST==='detail.1688.com'?'detail':(HOST.indexOf('s.1688.com')>=0?'search':'other');
+function $(s){return document.querySelector(s);}
+function $$(s){return Array.from(document.querySelectorAll(s));}
+function txt(el){return el?el.innerText.trim():'';}
+
+// 1688 价格是分段渲染的（¥ / 17 / .5 各在独立元素里，innerText 含换行），
+// 因此先去掉所有空白再匹配。
+function parsePrice(raw){
+  if(!raw) return null;
+  var flat=String(raw).replace(/\\s+/g,'');
+  var m=flat.match(/[\\u00A5¥](\\d+(?:\\.\\d+)?)/);
+  if(m) return parseFloat(m[1]);
+  // 兜底：纯数字（可能没有货币符号）
+  var m2=flat.match(/^(\\d+(?:\\.\\d+)?)$/);
+  if(m2) return parseFloat(m2[1]);
+  return null;
+}
+
+// 按优先级从卡片里提取价格
+function extractPrice(card){
+  // 1) 精确选择器
+  var sels=['.price-item','.offer-price-row .price-item','.price-wrapper','.hover-price-item','.col-desc-price'];
+  for(var i=0;i<sels.length;i++){
+    var el=card.querySelector(sels[i]);
+    if(el){
+      var p=parsePrice(txt(el));
+      if(p!==null && p>0) return p;
+    }
+  }
+  // 2) 兜底：整卡文本
+  return parsePrice(txt(card));
+}
+
+// 提取商品属性（面料/版型/工艺，形如「聚酯纤维｜冰丝｜合体型」）
+function extractAttrs(card){
+  var el=card.querySelector('[class*="desc"],[class*="attr"],[class*="prop"]');
+  var raw=(el?txt(el):txt(card)).replace(/\\s+/g,'');
+  // 只在出现分隔符时取属性段
+  var seg=raw.split(/[\\u00A5¥]/)[0];
+  if(seg.indexOf('｜')<0&&seg.indexOf('|')<0) return {};
+  var parts=seg.split(/｜|\\|/).map(function(s){return s.trim();}).filter(function(s){return s && s.length<=12;});
+  if(parts.length<2) return {};
+  return {属性: parts.slice(0,4).join(' / ')};
+}
+
+function extractTitle(text){var lines=text.split(/\\n|\\r/).map(l=>l.trim()).filter(l=>l.length>2&&l.length<100);return lines.length>0?lines[0]:'';}
+
+// 每次点击时动态查询当前目标款（不再写死在书签里）
+async function getCurrentTarget(){
+  try{
+    var r=await fetch(CURRENT_API,{cache:'no-store'});
+    var d=await r.json();
+    if(d && d.id){return d.id;}
+  }catch(e){}
+  return null;
+}
+
+async function createTargetFromPage(){
+  var title=txt($('h1'))||document.title.replace(/[-_].*$/,'').trim();
+  var img='';
+  $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
+  if(!img){alert('❌ 没找到图片，无法创建目标款');return null;}
+  var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
+  var price=pm?parseFloat(pm[1]):null;
+  var payload={title:title,image_url:img,price:price,category:'衬衫',description:''};
+  var r=await fetch(CREATE_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  var d=await r.json();
+  if(d.ok && d.id){return d.id;}
+  alert('❌ 创建目标款失败：'+(d.error||'未知错误'));
+  return null;
+}
+
+var TARGET_ID=await getCurrentTarget();
+if(!TARGET_ID && !CREATE_NEW){
+  alert('⚠️ 系统里还没有目标款。\\n请先到比价系统创建一个目标款再导入。');
+  return;
+}
+
+if(PAGE_TYPE==='search'){
+  var cards=$$('.space-common-offerlist, .page-offerlist, .search-offer-wrapper.major-offer');
+  if(cards.length===0) cards=$$('div[class*="card"],div[class*="item"],div[class*="offer"]').filter(function(c){return c.querySelector('img')&&c.querySelector('a[href*="offer"]');});
+  if(cards.length===0){alert('❌ 没找到商品卡片，请确认在 1688 搜索列表页');return;}
+  var imported=0,failed=0,withPrice=0;
+  async function importOne(card,i){
+    try{
+      var imgs=card.querySelectorAll('img'),links=card.querySelectorAll('a[href*="offer"]');
+      if(imgs.length===0||links.length===0){failed++;return;}
+      var imgSrc=imgs[0].src,linkUrl=links[0].href;
+      if(!imgSrc||!linkUrl){failed++;return;}
+      var shopRow=$('.offer-shop-row',card)||$('.offer-shop-row');
+      var shopName=txt(shopRow)||'1688店铺';
+      var title=extractTitle(txt(card))||'1688商品';
+      var price=extractPrice(card);
+      var attrs=extractAttrs(card);
+      if(price!==null) withPrice++;
+      var payload={target_style_id:TARGET_ID,title:title,image_url:imgSrc,price:price,url:linkUrl,shop_name:shopName,
+                   attributes:attrs, attributes_json:JSON.stringify(attrs)};
+      var r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      var d=await r.json();
+      if(d.ok){imported++;}else{console.error('导入失败:',d.error);failed++;}
+    }catch(e){console.error('处理卡片出错:',e);failed++;}
+  }
+  for(var i=0;i<cards.length && i<20;i++){await importOne(cards[i],i);}
+  alert('✅ 批量导入完成\\n成功: '+imported+' 个（其中带价格 '+withPrice+' 个）\\n失败: '+failed+' 个');
+}else if(PAGE_TYPE==='detail'){
+  if(CREATE_NEW){
+    var newId=await createTargetFromPage();
+    if(!newId){return;}
+    TARGET_ID=newId;
+  }
+  var h1txt=txt($('h1'));
+  var h1IsCompany=/(有限公司|实业|工贸|贸易|商行|日用品|服饰|科技)/.test(h1txt);
+  var ogEl=$('meta[property="og:title"]');
+  var dt=document.title.replace(/[-_|–—].*$/,'').replace(/(阿里巴巴|1688).*/,'').trim();
+  var cm=document.documentElement.innerHTML.match(/"companyName"\\s*:\\s*"([^"]{2,40})"/);
+  var company=(h1IsCompany&&h1txt)||(cm&&cm[1])||txt($('.company-name'))||'';
+  var title=(!h1IsCompany&&h1txt)?h1txt:(ogEl&&ogEl.content&&ogEl.content.trim())||dt||'1688商品';
+  var img='';
+  $$('img').some(function(im){if((im.naturalWidth||0)>200&&im.src&&!im.src.startsWith('data:')){img=im.src;return true;}});
+  var price=null;
+  var pm=document.body.innerText.match(/\\u00A5(\\d+(?:\\.\\d+)?)/);
+  if(pm)price=parseFloat(pm[1]);
+  var shopRow=$('.offer-shop-row')||$('.company-name')||$('.shop-name');
+  var um=location.href.match(/[?&]uid=([^&]+)/);
+  var shopName=um?decodeURIComponent(um[1]):(company||txt(shopRow)||'1688店铺');
+  var offerId=(location.href.match(/offer\\/(\\d+)/)||[])[1]||'';
+  var url='http://detail.1688.com/offer/'+offerId+'.html';
+  fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    target_style_id:TARGET_ID,title:title,image_url:img,price:price,url:url,shop_name:shopName.trim()
+  })}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){alert(CREATE_NEW?('✅ 已创建目标款《'+title+'》并导入'):('✅ 导入成功：'+title));}
+    else{alert('❌ 导入失败：'+(d.error||'未知错误'));}
+  }).catch(function(e){alert('❌ 请求失败：'+e.message);});
+}else{
+  alert('⚠️ 请在 1688 搜索列表页(s.1688.com)或商品详情页(detail.1688.com)使用此书签');
+}
+})();`;
+}
+
+function renderBM() {
+  var createNew = document.getElementById('create-new-target').checked;
+  var code = generateBookmarklet(createNew);
+  var oneLine = 'javascript:' + encodeURIComponent(code);
+  document.getElementById('bm-btn').href = oneLine;
+  document.getElementById('bm-code').value = oneLine;
+}
+
+// 把页面选中的目标款同步到后端，书签点击时会读取它
+async function syncCurrentTarget(id) {
+  if (!id) return;
+  try {
+    await api('/api/current-target', {method:'POST', body: JSON.stringify({target_id: id})});
+  } catch (e) {}
+}
+
+// 演示模式：自动挑一个有图有商品的目标款并跑匹配
+async function showDemo() {
+  const targets = await api('/api/targets');
+  if (!Array.isArray(targets)) { alert('读取目标款失败，请确认服务正在运行'); return; }
+  let demo = null;
+  for (const t of targets) {
+    if (t.image_paths && t.image_paths.length > 0) {
+      const prods = await api(`/api/targets/${t.id}/products`);
+      if (prods && prods.length > 0) { demo = t; break; }
+    }
+  }
+  if (!demo) {
+    alert('未找到带图片和商品的目标款。\n\n请先创建一个带图片的目标款并导入一些候选商品。');
+    return;
+  }
+  showTab('home');
+  currentTargetId = demo.id;
+  selectTarget(demo.id);
+  runMatch();
+}
+
+// ================= 初始化 =================
+(async () => {
+  // 恢复服务端记录的当前目标款，避免刷新后状态丢失
+  try {
+    const cur = await api('/api/current-target').catch(() => null);
+    if (cur && cur.id) currentTargetId = cur.id;
+  } catch (e) {}
+  refreshTargets();
+  loadShops();
+  refreshInquiries();
+  loadCachedComparison();   // 首载也回显当前目标款的缓存结论
+  loadImportTargets();
+  loadAgentHistory();
+})();
+
+// ================= V2：底部智能体 Dock 开关 =================
+function toggleDock(force) {
+  const dock = document.getElementById('dock');
+  const closed = force !== undefined ? !force : !dock.classList.contains('dock-closed');
+  dock.classList.toggle('dock-closed', closed);
+}
+</script>
+</body>
+</html>

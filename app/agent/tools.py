@@ -315,7 +315,7 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                         "输出 JSON 数组，每项 {\"kw\":\"关键词\",\"why\":\"一句话理由\"}，只输出 JSON。"
                     )},
                     {"role": "user", "content": prompt},
-                ], temperature=0.4, max_tokens=600)
+                ], temperature=0.4, max_tokens=1200)
                 txt = raw.strip()
                 if txt.startswith("```"):
                     txt = txt.split("```")[1]

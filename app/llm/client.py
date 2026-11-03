@@ -33,10 +33,14 @@ class LLMClient:
     def available(self) -> bool:
         return bool(self.api_key)
 
-    def chat(self, messages: list[dict], temperature: float = 0.3, max_tokens: int = 512) -> str:
+    def chat(self, messages: list[dict], temperature: float = 0.3,
+             max_tokens: int | None = None) -> str:
         if not self.available:
             raise RuntimeError("LLM_API_KEY（或 DEEPSEEK_API_KEY）未配置")
         url = f"{self.base_url}/chat/completions"
+        # 推理型模型（如 deepseek-v4.1-flash）先输出思维链再写正文，预算给小了会
+        # 只返回空 content，故默认给足（可用 LLM_MAX_TOKENS 覆盖）
+        budget = max_tokens or int(os.getenv("LLM_MAX_TOKENS", "1200") or 1200)
         resp = httpx.post(
             url,
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -44,14 +48,19 @@ class LLMClient:
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens,
+                "max_tokens": budget,
             },
             timeout=60.0,
         )
         resp.raise_for_status()
         data = resp.json()
         USAGE.add(*extract_usage(data))
-        return data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        content = (msg.get("content") or "").strip()
+        # 正文为空（预算耗尽/推理型输出到 reasoning_content）时回退，避免上层拿到空串
+        if not content:
+            content = (msg.get("reasoning_content") or "").strip()
+        return content
 
 
 def get_client() -> LLMClient:

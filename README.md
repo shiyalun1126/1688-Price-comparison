@@ -91,8 +91,8 @@ start.bat        Windows 一键启动
 
 ```bash
 pip install -e ".[dev]"
-cp .env.example .env   # 按 .env.example 注释填 LLM_*（文字智能体，任意 OpenAI 兼容厂商）
-                       # 与 DEEPSEEK_API_KEY（视觉匹配用多模态模型；不配则走规则兜底）
+cp .env.example .env   # 按 .env.example 注释填 LLM_*（文字 + 视觉统一走一个 OpenAI 兼容端点）
+                       # 不配任何 key 时话术/解析/议价走规则兜底，链路仍可跑通
 python scripts/start_all.py     # 或 Windows 下直接双击 start.bat
 ```
 

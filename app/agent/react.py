@@ -98,6 +98,8 @@ class ReActAgent:
                 "tools": self._tool_schemas(),
                 "tool_choice": "auto",
                 "temperature": 0.2,
+                # 推理型模型先输出思维链，预算太小会只见推理不见工具调用/正文
+                "max_tokens": int(os.getenv("LLM_MAX_TOKENS_AGENT", "2000") or 2000),
             },
             timeout=120.0,
         )
@@ -126,7 +128,7 @@ class ReActAgent:
                 return run
 
             tool_calls = msg.get("tool_calls") or []
-            content = (msg.get("content") or "").strip()
+            content = (msg.get("content") or "").strip() or (msg.get("reasoning_content") or "").strip()
 
             # 没有工具调用 → Agent 认为可以收尾
             if not tool_calls:

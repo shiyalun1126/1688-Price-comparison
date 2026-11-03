@@ -23,9 +23,12 @@ from PIL import Image
 import app.config  # noqa: F401  触发 .env 加载
 from app.llm.usage import USAGE, extract_usage
 
-# 视觉模型可通过环境变量 DEEPSEEK_VISION_MODEL 覆盖（如代理网关只提供其它模型时）；
+# 视觉模型可通过环境变量覆盖：LLM_VISION_MODEL > LLM_MODEL > DEEPSEEK_VISION_MODEL；
 # 默认 deepseek-flash：官方推理型多模态模型，content 可能为空、答案在 reasoning_content
-VISION_MODEL = os.getenv("DEEPSEEK_VISION_MODEL", "deepseek-flash")
+VISION_MODEL = (os.getenv("LLM_VISION_MODEL", "")
+                or os.getenv("DEEPSEEK_VISION_MODEL", "")
+                or os.getenv("LLM_MODEL", "")
+                or "deepseek-flash")
 
 # 品类 → 比对维度提示（按目标款 category 注入；未命中用通用维度）。
 # 用「关键词组」匹配而非全等：category 常写成「蓝牙耳机」「POLO衫」等自然说法。
@@ -179,6 +182,48 @@ def _parse_json(text: str, expect_keys: list[str]) -> dict:
     return out
 
 
+_VISION_KEYS = ["same", "confidence", "tier", "reason", "key_diff"]
+
+# 输出格式强约束：部分推理型模型会无视 system 里的"只输出 JSON"，把结论写成散文，
+# 故在用户消息末尾再压一次，并在解析失败时用一次纯文本调用做格式修复。
+_JSON_ONLY_HINT = (
+    "【判定口径，务必遵守】先找「明确可见且相互矛盾」的证据，只有下面这些才算不同款：\n"
+    "品类/形态不同、配色明显不同、图案或格纹本身明显不同、结构或组件明显不同。\n"
+    "拍摄方式（模特/挂拍/平铺/场景）、角度、光线、背景、水印、是否多色合集展示、局部被遮挡看不清"
+    "——这些都**不算**差异。\n"
+    "只要上述硬指标基本一致，就必须判 same=true、tier=exact 或 equivalent；"
+    "拿不准时倾向同款，不要因为细节看不清就判 different。\n"
+    "直接输出 JSON 对象，第一个字符必须是 {，不要 Markdown、不要标题、不要解释。"
+    '字段：{"same":true|false,"confidence":0.0-1.0,'
+    '"tier":"exact"|"equivalent"|"different","reason":"一句话理由","key_diff":"关键差异"}'
+)
+
+
+def _repair_json(text: str, api_key: str, base_url: str, model: str, timeout: float) -> dict:
+    """把模型输出的散文/列表改写成严格 JSON（纯文本二次调用，不重复传图）。"""
+    resp = httpx.post(
+        f"{base_url}/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "你只做格式转换：把给定的商品比对分析改写成严格 JSON，"
+                                              "保留原结论（same/tier/confidence 不得改变语义）。"},
+                {"role": "user", "content": f"输出字段：{_JSON_ONLY_HINT}\n\n待转换的分析：\n{text[:4000]}"},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 800,
+        },
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    USAGE.add(*extract_usage(data))
+    msg = data["choices"][0].get("message", {})
+    out = (msg.get("content") or "").strip() or (msg.get("reasoning_content") or "").strip()
+    return _parse_json(out, _VISION_KEYS)
+
+
 def compare_images(
     img_a: str,
     img_b: str,
@@ -197,10 +242,11 @@ def compare_images(
 
     内置重试：视觉模型对大 b64 负载偶发返回空/截断内容。
     """
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+    api_key = os.getenv("LLM_API_KEY", "") or os.getenv("DEEPSEEK_API_KEY", "")
+    base_url = (os.getenv("LLM_BASE_URL", "")
+                or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
     if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY 未配置")
+        raise RuntimeError("LLM_API_KEY（或 DEEPSEEK_API_KEY）未配置")
 
     user_blocks = [
         {"type": "text", "text": "图A（目标款）："},
@@ -210,6 +256,7 @@ def compare_images(
     ]
     if recheck:
         user_blocks.insert(0, {"type": "text", "text": _RECHECK_INSTRUCTION})
+    user_blocks.append({"type": "text", "text": _JSON_ONLY_HINT})
 
     payload = {
         "model": model or VISION_MODEL,
@@ -238,7 +285,11 @@ def compare_images(
             # 思考型模型：content 为空时，答案可能落在 reasoning_content 末尾
             if not text:
                 text = (msg.get("reasoning_content") or "").strip()
-            parsed = _parse_json(text, ["same", "confidence", "tier", "reason", "key_diff"])
+            try:
+                parsed = _parse_json(text, _VISION_KEYS)
+            except ValueError:
+                # 模型无视 JSON 约束、输出了散文 → 追加一次格式修复调用
+                parsed = _repair_json(text, api_key, base_url, payload["model"], timeout)
             parsed.setdefault("tier", "different")
             parsed.setdefault("same", parsed.get("tier") != "different")
             parsed.setdefault("confidence", 0.5)

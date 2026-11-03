@@ -16,7 +16,7 @@
 
 ![比价结论](docs/screenshots/comparison-result.png)
 
-## 演示视频（30 秒 × 2）
+## 演示视频
 
 **方式一 · 智能体自动分析**——一句话目标，ReAct 智能体自主调工具，推理轨迹实时可见：
 
@@ -26,7 +26,11 @@
 
 [▶ 观看视频（点击在线播放）](app/web/static/videos/demo-manual.mp4)
 
-> 视频为 Playwright 真实录屏（录制脚本 `scripts/record_demo.py` 可复现）；本地克隆后页面内嵌播放器见 `使用说明` 页。
+**进阶 · 询价闭环**——复制话术问价 → 回贴卖家回复 → 自动解析价格/MOQ/含税/现货/发货时效/阶梯价 → 比价结论纳入真实报价：
+
+[▶ 观看视频（点击在线播放）](app/web/static/videos/demo-inquiry.mp4)
+
+> 视频为 Playwright 真实录屏（录制脚本 `scripts/record_demo.py`、`scripts/record_inquiry.py` 可复现）；本地克隆后页面内嵌播放器见 `使用说明` 页。
 
 ## 定位
 

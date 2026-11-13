@@ -7,9 +7,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.models.enums import (
+    ChatChannel,
+    InquiryStage,
     InquiryStatus,
     MatchStatus,
     MatchTier,
+    MsgRole,
     QuoteSource,
     StockStatus,
     TaxStatus,
@@ -86,6 +89,56 @@ class InquiryTask(BaseModel):
     buyer_quantity: Optional[int] = None  # 拟采购量（影响话术）
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ---------------------------------------------------------------------------
+# 自动谈判会话
+# ---------------------------------------------------------------------------
+class InquirySession(BaseModel):
+    """一次与卖家的自动对话（询价 → 追问 → 议价）的运行时状态。
+
+    一个 inquiry 对应一个 session；session 是状态机，worker 按 next_action_at
+    轮询推进。所有判定与原文都落库，保证可回溯、可人工接管。
+    """
+
+    id: str
+    inquiry_id: str
+    target_style_id: str
+    product_id: str
+    shop_id: str
+    offer_url: str = ""
+    channel: ChatChannel = ChatChannel.CDP
+
+    stage: InquiryStage = InquiryStage.INQUIRY
+    status: InquiryStatus = InquiryStatus.DRAFT
+    round: int = 0                          # 已发出的我方消息轮次
+    gap: list[str] = Field(default_factory=list)   # 还没问到的字段
+    last_speaker: Optional[MsgRole] = None
+    last_msg_at: Optional[datetime] = None
+    next_action_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+    buyer_quantity: Optional[int] = None
+    floor_price: Optional[float] = None     # 目标成交价（来自参考价或市场最低价）
+    market_min: Optional[float] = None      # 议价时引用的市场最低价
+    paused: bool = False                    # 人工暂停（接管时不打扰）
+    error: str = ""                         # 最近一次失败原因
+
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class InquiryMessage(BaseModel):
+    """会话中的一条消息或事件（kind=system 时是智能体的动作记录）。"""
+
+    id: str
+    session_id: str
+    role: MsgRole
+    kind: str = "text"                      # text / image / system / quote
+    text: str = ""
+    extracted: dict = Field(default_factory=dict)   # 该条解析出的报价字段
+    screenshot: str = ""                    # 截图相对路径（失败复盘用）
+    ts: datetime = Field(default_factory=datetime.now)
 
 
 # ---------------------------------------------------------------------------

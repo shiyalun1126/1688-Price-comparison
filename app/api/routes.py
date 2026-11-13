@@ -11,10 +11,13 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.comparison.comparison import run_comparison
-from app.inquire.inquiry import build_inquiry_script, parse_quote
+from app.inquire import detail_facts
+from app.inquire.dialogue import GAP_ASKS, GAP_LABELS
+from app.inquire.engine import get_engine
+from app.inquire.inquiry import build_inquiry_script, clean_product_title, parse_quote
 from app.matcher.matcher import Matcher
 from app.models.entities import InquiryTask, Product, Shop, TargetStyle
-from app.models.enums import MatchStatus
+from app.models.enums import MatchStatus, MatchTier
 from app.uploads import UPLOAD_DIR as _UPLOAD_DIR_IMPORT
 from app.uploads import ensure_upload_dir, save_upload, to_web_path, to_web_paths
 
@@ -291,6 +294,32 @@ def list_products(request: Request, target_id: str):
     return [_dump_product(p) for p in _store(request).list_products(target_id)]
 
 
+@router.post("/products/{product_id}/detail-facts")
+def refresh_detail_facts(request: Request, product_id: str, force: bool = False):
+    """抓一次商品详情页，看看「页面已知」到底读到了什么（也供前端刷新用）。
+
+    询价开始前会自动抓一次；这个接口是给人核对解析结果、或在页面改动后重抓。
+    """
+    store = _store(request)
+    product = store.get_product(product_id)
+    if not product:
+        return {"error": "商品不存在"}
+    if not (product.url or "").startswith("http"):
+        return {"error": "该商品没有 1688 链接"}
+    cached = detail_facts.load(product)
+    if cached and not force:
+        return {"cached": True, "facts": cached.to_dict(),
+                "summary": cached.summary(product.moq or 100)}
+    from app.browser.detail import fetch_offer_facts
+    facts, why = fetch_offer_facts(product.url)
+    if not facts:
+        return {"error": why or "抓取失败", "cached": bool(cached)}
+    detail_facts.attach(product, facts)
+    store.save_product(product)
+    return {"cached": False, "facts": facts.to_dict(),
+            "summary": facts.summary(product.moq or 100)}
+
+
 # ---- 浏览器书签导入 --------------------------------------------------------
 class ImportProduct(BaseModel):
     target_style_id: str
@@ -360,6 +389,28 @@ def import_product(request: Request, body: ImportProduct):
     return {"ok": True, "product": _dump_product(p), "shop_id": shop_id}
 
 
+class CrawlBody(BaseModel):
+    keywords: str
+    max_items: int = 20
+
+
+@router.post("/targets/{target_id}/crawl")
+def crawl_target(request: Request, target_id: str, body: CrawlBody):
+    """按关键词在抓取浏览器里搜 1688，把结果落成当前目标款的候选商品。
+
+    只读抓取，不发消息、不下单。这是页面上「找货源」的主入口：书签导入退成兜底，
+    因为书签要装、换浏览器就丢、手机上根本用不了。
+    """
+    store = _store(request)
+    target = store.get_target_style(target_id)
+    if not target:
+        return {"ok": False, "error": "目标款不存在"}
+
+    from app.browser.ingest import crawl_into_target
+
+    return crawl_into_target(store, target, body.keywords, body.max_items)
+
+
 # ---- 匹配 -----------------------------------------------------------------
 @router.post("/targets/{target_id}/match")
 def run_match(request: Request, target_id: str, incremental: bool = True):
@@ -394,7 +445,7 @@ def run_match(request: Request, target_id: str, incremental: bool = True):
 
     t0 = __import__("time").time()
     matcher = Matcher()
-    cls = matcher.run(target, to_match, max_workers=8)
+    cls = matcher.run(target, to_match)   # 并发数走 LLM_VISION_CONCURRENCY（默认 4）
     elapsed = __import__("time").time() - t0
 
     # 合并增量结果
@@ -458,19 +509,38 @@ class InquiryReply(BaseModel):
     reply: str
 
 
-def _inquiry_view(i, product, shop):
-    """把 InquiryTask 组合成前端好用的视图。"""
-    return {
+def _inquiry_view(i, product, shop, session=None):
+    """把 InquiryTask 组合成前端好用的视图。
+
+    session 存在时附带自动谈判的运行时状态（轮次、缺口、阶段、暂停），
+    前端据此显示「自动谈判中 / 待追问：运费」这类信息。
+    """
+    v = {
         "id": i.id,
         "product_id": i.product_id,
         "shop_id": i.shop_id,
         "shop_name": shop.name if shop else i.shop_id,
-        "title": product.title if product else "",
+        "title": clean_product_title(product.title, 60) if product else "",
         "script": i.script,
         "status": i.status.value,
         "buyer_quantity": i.buyer_quantity,
         "created_at": i.created_at.isoformat(),
+        "auto": False,
     }
+    if session is not None:
+        v.update({
+            "auto": True,
+            "session_id": session.id,
+            "round": session.round,
+            "gap": session.gap,
+            "gap_labels": [GAP_LABELS.get(g, g) for g in session.gap],
+            "stage": session.stage.value,
+            "paused": session.paused,
+            "channel": session.channel.value,
+            "error": session.error,
+            "last_msg_at": session.last_msg_at.isoformat() if session.last_msg_at else None,
+        })
+    return v
 
 
 _TIER_RANK = {"exact": 0, "equivalent": 1, "unverified": 2, "rejected": 3}
@@ -502,6 +572,7 @@ def list_inquiries(request: Request, target_id: str):
     shops = {s.id: s for s in store.list_shops()}
     products = store.list_products(target_id)
     prod_by_id = {p.id: p for p in products}
+    sessions = {s.inquiry_id: s for s in store.list_sessions(target_id)}
 
     # 每个商品最新一条有效报价（>0；寒暄回复解析出的 ¥0 不算，比标价更真实，优先采用）
     quote_by_product: dict[str, tuple] = {}
@@ -513,7 +584,8 @@ def list_inquiries(request: Request, target_id: str):
     view = []
     # 已有询价任务的
     for i in inquiries:
-        v = _inquiry_view(i, prod_by_id.get(i.product_id), shops.get(i.shop_id))
+        v = _inquiry_view(i, prod_by_id.get(i.product_id), shops.get(i.shop_id),
+                          sessions.get(i.id))
         view.append(_attach_match_info(v, prod_by_id.get(i.product_id), quote_by_product))
     # 还没询价的商品
     for p in products:
@@ -521,7 +593,7 @@ def list_inquiries(request: Request, target_id: str):
             v = {
                 "id": None, "product_id": p.id, "shop_id": p.shop_id,
                 "shop_name": shops.get(p.shop_id).name if shops.get(p.shop_id) else p.shop_id,
-                "title": p.title, "script": "", "status": "pending",
+                "title": clean_product_title(p.title, 60), "script": "", "status": "pending",
                 "buyer_quantity": None, "created_at": None,
             }
             view.append(_attach_match_info(v, p, quote_by_product))
@@ -557,17 +629,27 @@ def create_inquiry(request: Request, body: InquiryCreate):
     if not product:
         return {"error": "商品不存在"}
 
+    facts = detail_facts.load(product)
+    # 页面写明的项不再问，预览出来的话术与实际发送口径保持一致
+    asks = None
+    if facts:
+        known = facts.known_gaps(body.buyer_quantity)
+        asks = [GAP_ASKS[k] for k in ("tax", "shipping", "stock", "lead_time")
+                if k not in known]
+
     existing = store.get_inquiry_by_product(body.target_style_id, body.product_id)
     if existing:
         i = existing
         i.buyer_quantity = body.buyer_quantity
-        i.script = build_inquiry_script(target, product, body.buyer_quantity)
+        i.script = build_inquiry_script(target, product, body.buyer_quantity,
+                                        facts=facts, asks=asks)
         i.updated_at = datetime.now()
     else:
         i = InquiryTask(
             id=uuid.uuid4().hex, target_style_id=body.target_style_id,
             product_id=body.product_id, shop_id=product.shop_id,
-            script=build_inquiry_script(target, product, body.buyer_quantity),
+            script=build_inquiry_script(target, product, body.buyer_quantity,
+                                        facts=facts, asks=asks),
             buyer_quantity=body.buyer_quantity,
         )
     store.save_inquiry(i)
@@ -846,3 +928,230 @@ def usage_stats(request: Request):
             os.getenv("LLM_INPUT_PRICE_PER_M") or os.getenv("LLM_OUTPUT_PRICE_PER_M")
         ),
     }
+
+# ---- 自动谈判（会话引擎）---------------------------------------------------
+class InjectText(BaseModel):
+    text: str
+
+
+class PauseBody(BaseModel):
+    paused: bool = True
+
+
+class AutoBatch(BaseModel):
+    create_missing: bool = True   # 还没建询价任务的候选商品，顺手建一个再入队
+    limit: int = 8                # 单次最多发起几家（自动谈判不该一次轰几十家）
+    channel: str = ""             # mock=剧本演示（不碰真实账号）/ cdp=真发 / 空=跟随环境变量
+
+
+def _session_view(s) -> dict:
+    """会话运行时状态 → 前端视图。"""
+    return {
+        "id": s.id,
+        "inquiry_id": s.inquiry_id,
+        "product_id": s.product_id,
+        "shop_id": s.shop_id,
+        "offer_url": s.offer_url,
+        "channel": s.channel.value,
+        "stage": s.stage.value,
+        "status": s.status.value,
+        "round": s.round,
+        "gap": s.gap,
+        "gap_labels": [GAP_LABELS.get(g, g) for g in s.gap],
+        "last_speaker": s.last_speaker.value if s.last_speaker else None,
+        "last_msg_at": s.last_msg_at.isoformat() if s.last_msg_at else None,
+        "next_action_at": s.next_action_at.isoformat() if s.next_action_at else None,
+        "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+        "buyer_quantity": s.buyer_quantity,
+        "floor_price": s.floor_price,
+        "market_min": s.market_min,
+        "paused": s.paused,
+        "error": s.error,
+    }
+
+
+def _message_view(m) -> dict:
+    return {
+        "id": m.id,
+        "role": m.role.value,
+        "kind": m.kind,
+        "text": m.text,
+        "extracted": m.extracted,
+        "screenshot": m.screenshot,
+        "ts": m.ts.isoformat(),
+    }
+
+
+@router.post("/inquiries/{inquiry_id}/auto")
+def auto_inquiry(request: Request, inquiry_id: str, channel: str = ""):
+    """把一条询价任务交给智能体自动谈判（发送→追问→议价→收敛）。
+
+    ?channel=mock 走剧本卖家（离线演示，不碰真实账号）；留空跟随 INQUIRY_CHANNEL。
+    """
+    return get_engine(_store(request)).enqueue(
+        inquiry_id, require_verified=True, channel=channel)
+
+
+@router.post("/targets/{target_id}/inquiries/auto")
+def auto_inquiry_batch(request: Request, target_id: str,
+                       body: AutoBatch | None = None):
+    """批量发起自动询价：默认给还没建询价任务的候选商品也建上。
+
+    排除「已排除」的商品——只对可能同款的店发消息，这既是省钱也是风控：
+    发得越少越像正常买家。
+    """
+    body = body or AutoBatch()
+    store = _store(request)
+    target = store.get_target_style(target_id)
+    if not target:
+        return {"error": "目标款不存在"}
+
+    # 只对「已核验：完全同款 / 等效替代」的店开口。
+    # 被排除的不打扰；仅图相似召回、还没核验的更不能问——连是不是这款都没确认，
+    # 卖家报回来的价跟目标款没关系，白花一条配额，还容易被当成乱发的号。
+    wanted = {MatchTier.EXACT, MatchTier.EQUIVALENT}
+    all_products = store.list_products(target_id)
+    products = [p for p in all_products
+                if p.match_tier in wanted and (p.url or "").startswith("http")]
+    unverified = sum(1 for p in all_products
+                     if p.match_status == MatchStatus.CANDIDATE)
+
+    def _rank(p):
+        # 同款先谈，等效替代补位；同层按标价从低到高
+        return (0 if p.match_tier == MatchTier.EXACT else 1,
+                p.listed_price if p.listed_price is not None else 9e9)
+
+    # 一家店只聊一次：同店铺的多个商品取「核验最好、标价最低」的那个去谈，
+    # 否则同一个老板会被同一件事问三遍，既冒犯也容易被判营销。
+    by_shop: dict[str, object] = {}
+    for p in sorted(products, key=_rank):
+        by_shop.setdefault(p.shop_id, p)
+
+    # 这家店为这个款已经聊过（无论聊到哪一步）就不再重复打扰：
+    # 「这款多少钱」问过一次就该有答案，换个链接再问一遍只会让老板反感。
+    # 只有之前被手动关闭（closed）的才允许重新发起。
+    busy = {s.shop_id for s in store.list_sessions(target_id)
+            if s.status.value != "closed"}
+    limit = max(1, min(int(body.limit or 8), 20))
+    picked = [p for p in by_shop.values() if p.shop_id not in busy][:limit]
+
+    from datetime import datetime as _dt
+    from app.models.entities import InquiryTask
+    from app.models.enums import InquiryStatus
+    created = 0
+    queued, skipped, errors = [], [], []
+    for p in picked:
+        inq = store.get_inquiry_by_product(target_id, p.id)
+        if inq is None:
+            if not body.create_missing:
+                continue
+            inq = InquiryTask(
+                id=f"inq-{uuid.uuid4().hex[:12]}", target_style_id=target_id,
+                product_id=p.id, shop_id=p.shop_id,
+                script=build_inquiry_script(target, p, None),
+                status=InquiryStatus.DRAFT, buyer_quantity=None,
+                created_at=_dt.now(), updated_at=_dt.now(),
+            )
+            store.save_inquiry(inq)
+            created += 1
+        if inq.status == InquiryStatus.QUOTED:
+            skipped.append(inq.id)
+            continue
+        r = get_engine(store).enqueue(inq.id, require_verified=True,
+                                      channel=body.channel)
+        if r.get("error"):
+            errors.append({"inquiry_id": inq.id, "error": r["error"]})
+        elif r.get("already_running"):
+            skipped.append(inq.id)
+        else:
+            queued.append(r["session_id"])
+
+    return {
+        "已入队": len(queued),
+        "新建询价任务": created,
+        "跳过": len(skipped),
+        "失败": errors,
+        "session_ids": queued,
+        "候选池": len(products),
+        "未核验跳过": unverified,
+        "本次上限": limit,
+        "今日剩余配额": get_engine(store).quota_left(),
+    }
+
+
+@router.get("/inquiry-engine")
+def inquiry_engine_status(request: Request):
+    """引擎状态：是否在跑、今日配额、各状态会话数、是否被风控阻断。"""
+    return get_engine(_store(request)).status()
+
+
+@router.post("/inquiry-engine/run")
+def inquiry_engine_run(request: Request, limit: int = 0):
+    """立即推进一轮（演示/调试用，不用等定时 tick）。"""
+    return {"results": get_engine(_store(request)).run_once(limit=limit)}
+
+
+@router.post("/inquiry-engine/resume")
+def inquiry_engine_resume(request: Request):
+    """人工处理完验证码/登录后，一键恢复被暂停的会话。"""
+    return get_engine(_store(request)).resume_engine()
+
+
+@router.get("/sessions")
+def list_active_sessions(request: Request, limit: int = 40):
+    """在谈会话名单：点引擎状态条时看「到底在跟哪几家聊、聊到哪一步」。
+
+    「未收工」= 状态还没到已报价/已结束/已超时/需人工；其中被人工暂停的
+    单独标出来，避免把「暂停」误读成「引擎正在跑」。
+    """
+    store = _store(request)
+    out = []
+    for s in store.list_active_sessions()[:limit]:
+        shop = store.get_shop(s.shop_id)
+        product = store.get_product(s.product_id)
+        v = _session_view(s)
+        v["shop_name"] = shop.name if shop else "(店铺已删除)"
+        v["title"] = clean_product_title(product.title, 48) if product else ""
+        # 名单要的是「对方/我们最后说了什么」，不是引擎的内部状态行。
+        # 只取买卖双方的消息，一条都没有时才回退到最近一条系统事件。
+        msgs = store.list_messages(s.id)
+        last = next((m for m in reversed(msgs) if m.role.value in ("seller", "buyer")), None)
+        if last is None and msgs:
+            last = msgs[-1]
+        v["last_text"] = (last.text or "")[:70] if last else ""
+        v["last_role"] = last.role.value if last else None
+        v["last_kind"] = last.kind if last else None
+        out.append(v)
+    return {"sessions": out, "total": len(out), "paused": sum(1 for v in out if v["paused"])}
+
+
+@router.get("/sessions/{session_id}")
+def get_session_detail(request: Request, session_id: str):
+    """会话详情：状态 + 完整消息流（前端对话视图）。"""
+    store = _store(request)
+    s = store.get_session(session_id)
+    if not s:
+        return {"error": "会话不存在"}
+    product = store.get_product(s.product_id)
+    shop = store.get_shop(s.shop_id)
+    view = _session_view(s)
+    # 抽屉标题要人话：店铺名 + 商品名，而不是一串 session id
+    view["shop_name"] = shop.name if shop else ""
+    view["title"] = clean_product_title(product.title, 80) if product else ""
+    msgs = store.list_messages(session_id)
+    return {"session": view, "messages": [_message_view(m) for m in msgs]}
+
+
+@router.post("/sessions/{session_id}/pause")
+def pause_session(request: Request, session_id: str, body: PauseBody | None = None):
+    """暂停/恢复单个会话（人工要自己接管时先暂停）。"""
+    body = body or PauseBody()
+    return get_engine(_store(request)).pause(session_id, body.paused)
+
+
+@router.post("/sessions/{session_id}/inject")
+def inject_message(request: Request, session_id: str, body: InjectText):
+    """人工插话：走同一通道发出去，并自动暂停引擎，避免两边打架。"""
+    if not body.text.strip():
+        return {"error": "消息不能为空"}
+    return get_engine(_store(request)).inject(session_id, body.text.strip())

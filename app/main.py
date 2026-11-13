@@ -1,6 +1,8 @@
 """FastAPI 主应用 + 路由。"""
 from __future__ import annotations
 
+import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,18 +12,28 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.inquire.engine import get_engine
 from app.store.db import Store
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def create_app() -> FastAPI:
-    store = Store(DATA_DIR / "app.db")
+    # APP_DB 让「演示实例」能用一份独立的库：给别人点着试的时候，
+    # 不能把真实采购价和店铺名单一起端过去，测试数据也不该写进生产库。
+    db_path = Path(os.getenv("APP_DB") or (DATA_DIR / "app.db"))
+    store = Store(db_path)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        yield
-        store.close()
+        # 自动谈判引擎：后台线程推进会话状态机（无待办时不做事，开销可忽略）
+        engine = get_engine(store)
+        engine.start()
+        try:
+            yield
+        finally:
+            engine.stop()
+            store.close()
 
     app = FastAPI(title="1688 比价智能体", version="0.1.0", lifespan=lifespan)
 
@@ -52,9 +64,25 @@ def create_app() -> FastAPI:
     if (web_dir / "static").exists():
         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
 
+    # 静态资源没有指纹，改了 js/css 后浏览器还在用旧缓存，页面看着像没生效。
+    # 按文件修改时间打上 ?v=，改一次换一次 URL，改完刷新立刻可见。
+    _asset_ref = re.compile(r'((?:src|href)=")((?:css|js)/[^"?]+)(")')
+
+    def _stamp_assets(html: str) -> str:
+        def repl(m: re.Match[str]) -> str:
+            f = web_dir / m.group(2)
+            try:
+                # 用纳秒：同一秒内连续改两次也能换 URL，不至于还取到旧文件
+                ver = f.stat().st_mtime_ns
+            except OSError:
+                ver = 0
+            return f"{m.group(1)}{m.group(2)}?v={ver}{m.group(3)}"
+        return _asset_ref.sub(repl, html)
+
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
-        return (web_dir / "index.html").read_text(encoding="utf-8")
+    def index() -> HTMLResponse:
+        html = _stamp_assets((web_dir / "index.html").read_text(encoding="utf-8"))
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     @app.get("/bookmarklet", response_class=HTMLResponse)
     def bookmarklet_page() -> str:

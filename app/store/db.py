@@ -11,6 +11,8 @@ from app.models.entities import (
     AgentPlanRecord,
     AgentRunRecord,
     ComparisonResult,
+    InquiryMessage,
+    InquirySession,
     InquiryTask,
     Product,
     Quote,
@@ -133,6 +135,48 @@ CREATE TABLE IF NOT EXISTS app_setting (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- 自动谈判会话：状态机运行时（一个 inquiry 一个 session）
+CREATE TABLE IF NOT EXISTS inquiry_session (
+    id TEXT PRIMARY KEY,
+    inquiry_id TEXT NOT NULL,
+    target_style_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    shop_id TEXT NOT NULL,
+    offer_url TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL DEFAULT 'cdp',
+    stage TEXT NOT NULL DEFAULT 'inquiry',
+    status TEXT NOT NULL DEFAULT 'draft',
+    round INTEGER NOT NULL DEFAULT 0,
+    gap TEXT NOT NULL DEFAULT '[]',
+    last_speaker TEXT,
+    last_msg_at TEXT,
+    next_action_at TEXT,
+    expires_at TEXT,
+    buyer_quantity INTEGER,
+    floor_price REAL,
+    market_min REAL,
+    paused INTEGER NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_session_target  ON inquiry_session(target_style_id);
+CREATE INDEX IF NOT EXISTS idx_session_inquiry ON inquiry_session(inquiry_id);
+CREATE INDEX IF NOT EXISTS idx_session_next    ON inquiry_session(next_action_at);
+
+-- 会话消息流：买家/卖家/系统事件，含每条的增量解析结果（可回溯）
+CREATE TABLE IF NOT EXISTS inquiry_message (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'text',
+    text TEXT NOT NULL DEFAULT '',
+    extracted TEXT NOT NULL DEFAULT '{}',
+    screenshot TEXT NOT NULL DEFAULT '',
+    ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_message_session ON inquiry_message(session_id, ts);
 """
 
 
@@ -231,10 +275,16 @@ class Store:
         return [self._row_to_target_style(r) for r in rows]
 
     def delete_target_style(self, id: str) -> dict:
-        """删除目标款及其所有关联数据（商品/询价/报价/比价/智能体记录）。"""
+        """删除目标款及其所有关联数据（商品/询价/报价/比价/会话/智能体记录）。"""
         counts: dict[str, int] = {}
+        # 会话消息没有 target_style_id，先按 session 反查清理，避免留孤儿
+        cur = self._conn.execute(
+            "DELETE FROM inquiry_message WHERE session_id IN "
+            "(SELECT id FROM inquiry_session WHERE target_style_id=?)", (id,)
+        )
+        counts["inquiry_message"] = cur.rowcount
         for table in ("product", "inquiry", "quote", "comparison",
-                      "agent_run", "agent_plan"):
+                      "inquiry_session", "agent_run", "agent_plan"):
             cur = self._conn.execute(
                 f"DELETE FROM {table} WHERE target_style_id=?", (id,)
             )
@@ -421,6 +471,10 @@ class Store:
         ).fetchall()
         return [self._row_to_quote(r) for r in rows]
 
+    def get_quote(self, id: str) -> Quote | None:
+        row = self._conn.execute("SELECT * FROM quote WHERE id=?", (id,)).fetchone()
+        return self._row_to_quote(row) if row else None
+
     @staticmethod
     def _row_to_quote(row) -> Quote:
         from datetime import datetime
@@ -552,4 +606,140 @@ class Store:
             steps=_loads(row["steps"], []), status=row["status"],
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    # ---- inquiry_session（自动谈判会话）------------------------------------
+    def save_session(self, s: InquirySession) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO inquiry_session
+               (id, inquiry_id, target_style_id, product_id, shop_id, offer_url,
+                channel, stage, status, round, gap, last_speaker, last_msg_at,
+                next_action_at, expires_at, buyer_quantity, floor_price, market_min,
+                paused, error, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                s.id, s.inquiry_id, s.target_style_id, s.product_id, s.shop_id,
+                s.offer_url, s.channel.value, s.stage.value, s.status.value,
+                s.round, json.dumps(s.gap), 
+                s.last_speaker.value if s.last_speaker else None,
+                _iso(s.last_msg_at) if s.last_msg_at else None,
+                _iso(s.next_action_at) if s.next_action_at else None,
+                _iso(s.expires_at) if s.expires_at else None,
+                s.buyer_quantity, s.floor_price, s.market_min,
+                int(s.paused), s.error, _iso(s.created_at), _iso(s.updated_at),
+            ),
+        )
+        self._conn.commit()
+
+    def get_session(self, id: str) -> InquirySession | None:
+        row = self._conn.execute(
+            "SELECT * FROM inquiry_session WHERE id=?", (id,)
+        ).fetchone()
+        return self._row_to_session(row) if row else None
+
+    def get_session_by_inquiry(self, inquiry_id: str) -> InquirySession | None:
+        row = self._conn.execute(
+            "SELECT * FROM inquiry_session WHERE inquiry_id=? "
+            "ORDER BY created_at DESC LIMIT 1", (inquiry_id,)
+        ).fetchone()
+        return self._row_to_session(row) if row else None
+
+    def list_sessions(self, target_style_id: str) -> list[InquirySession]:
+        rows = self._conn.execute(
+            "SELECT * FROM inquiry_session WHERE target_style_id=? ORDER BY created_at DESC",
+            (target_style_id,),
+        ).fetchall()
+        return [self._row_to_session(r) for r in rows]
+
+    def list_due_sessions(self, now, limit: int = 20) -> list[InquirySession]:
+        """取出该推进的会话：未暂停、未终结、next_action_at 已到（或为空）。"""
+        _DONE = ("quoted", "closed", "expired", "escalated")
+        rows = self._conn.execute(
+            f"""SELECT * FROM inquiry_session
+                WHERE paused=0 AND status NOT IN ({','.join('?' * len(_DONE))})
+                  AND (next_action_at IS NULL OR next_action_at<=?)
+                ORDER BY next_action_at IS NULL DESC, next_action_at ASC LIMIT ?""",
+            (*_DONE, _iso(now), limit),
+        ).fetchall()
+        return [self._row_to_session(r) for r in rows]
+
+    def list_active_sessions(self) -> list[InquirySession]:
+        _DONE = ("quoted", "closed", "expired", "escalated")
+        rows = self._conn.execute(
+            f"SELECT * FROM inquiry_session WHERE status NOT IN "
+            f"({','.join('?' * len(_DONE))}) ORDER BY updated_at DESC", _DONE
+        ).fetchall()
+        return [self._row_to_session(r) for r in rows]
+
+    def count_sessions_since(self, since) -> int:
+        """某时间点后新建的会话数（用于每日风控配额）。"""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM inquiry_session WHERE created_at>=?", (_iso(since),)
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    @staticmethod
+    def _row_to_session(row) -> InquirySession:
+        from datetime import datetime
+
+        from app.models.enums import ChatChannel, InquiryStage, InquiryStatus, MsgRole
+        last = row["last_speaker"]
+        return InquirySession(
+            id=row["id"], inquiry_id=row["inquiry_id"],
+            target_style_id=row["target_style_id"], product_id=row["product_id"],
+            shop_id=row["shop_id"], offer_url=row["offer_url"] or "",
+            channel=ChatChannel(row["channel"]) if row["channel"] else ChatChannel.CDP,
+            stage=InquiryStage(row["stage"]) if row["stage"] else InquiryStage.INQUIRY,
+            status=InquiryStatus(row["status"]),
+            round=row["round"] or 0, gap=_loads(row["gap"], []),
+            last_speaker=MsgRole(last) if last else None,
+            last_msg_at=datetime.fromisoformat(row["last_msg_at"]) if row["last_msg_at"] else None,
+            next_action_at=(datetime.fromisoformat(row["next_action_at"])
+                            if row["next_action_at"] else None),
+            expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
+            buyer_quantity=row["buyer_quantity"], floor_price=row["floor_price"],
+            market_min=row["market_min"], paused=bool(row["paused"]),
+            error=row["error"] or "",
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    # ---- inquiry_message（会话消息流）--------------------------------------
+    def add_message(self, m: InquiryMessage) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO inquiry_message
+                   (id, session_id, role, kind, text, extracted, screenshot, ts)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (m.id, m.session_id, m.role.value, m.kind, m.text,
+                 json.dumps(m.extracted, ensure_ascii=False),
+                 m.screenshot, _iso(m.ts)),
+            )
+            self._conn.commit()
+
+    def list_messages(self, session_id: str, limit: int = 200) -> list[InquiryMessage]:
+        rows = self._conn.execute(
+            "SELECT * FROM inquiry_message WHERE session_id=? ORDER BY ts ASC LIMIT ?",
+            (session_id, limit),
+        ).fetchall()
+        return [self._row_to_message(r) for r in rows]
+
+    def last_message(self, session_id: str) -> InquiryMessage | None:
+        row = self._conn.execute(
+            "SELECT * FROM inquiry_message WHERE session_id=? ORDER BY ts DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return self._row_to_message(row) if row else None
+
+    @staticmethod
+    def _row_to_message(row) -> InquiryMessage:
+        from datetime import datetime
+
+        from app.models.enums import MsgRole
+        return InquiryMessage(
+            id=row["id"], session_id=row["session_id"], role=MsgRole(row["role"]),
+            kind=row["kind"] or "text", text=row["text"] or "",
+            extracted=_loads(row["extracted"], {}),
+            screenshot=row["screenshot"] or "",
+            ts=datetime.fromisoformat(row["ts"]),
         )

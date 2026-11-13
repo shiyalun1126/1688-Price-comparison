@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -23,6 +24,21 @@ AttributeVerifier = Callable[[TargetStyle, Product], tuple[bool, float, str]]
 
 # 图相似召回默认阈值（pHash 汉明距离换算）；真实照片场景需实测校准
 IMAGE_RECALL_THRESHOLD = 0.75
+
+# 视觉比对并发数：受上游账号池「每账号在途请求上限」约束，开太大反而大面积 503
+# （本地中转站实测：2 个账号时 6 并发稳定、8 并发开始丢请求）。
+# 可用 LLM_VISION_CONCURRENCY 覆盖；无 key 走规则核验时并发无意义。
+DEFAULT_MAX_WORKERS = 4
+
+
+def vision_concurrency(default: int = DEFAULT_MAX_WORKERS) -> int:
+    """视觉比对并发数（环境变量 LLM_VISION_CONCURRENCY 优先，非法值用默认）。"""
+    raw = os.getenv("LLM_VISION_CONCURRENCY", "")
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return val if val > 0 else default
 
 
 @dataclass
@@ -103,6 +119,21 @@ class Matcher:
         return False, ratio, f"属性一致度不足 {ratio:.0%}，判为等效替代"
 
     @staticmethod
+    def _has_attribute_evidence(target: TargetStyle, product: Product) -> bool:
+        """属性核验是否握有可依据的证据。
+
+        `_rules_verifier` 在「目标款无属性」或「双方无共同属性维度」时会给出
+        0.0/0.3 这样的默认分——那不是判定结论，只是「没数据可说」。视觉调用失败时
+        若拿这种默认分去定状态，就会把「没核验」伪装成「已排除/等效替代」，
+        进而污染比价结论，因此这里显式区分「有无证据」。
+        """
+        if not target.attributes or not product.attributes:
+            return False
+        tkeys = {k for k, v in target.attributes.items() if v}
+        pkeys = {k for k, v in product.attributes.items() if v}
+        return bool(tkeys & pkeys)
+
+    @staticmethod
     def _resolve_img(p):
         """把图片路径解析为本地文件路径。
 
@@ -157,6 +188,14 @@ class Matcher:
                 return MatchOutcome(product.id, status, None, conf, f"[视觉] {reason}")
             except Exception as e:  # 视觉调用失败 → 退回属性核验
                 fallback_note = f"视觉比对失败({type(e).__name__})，改用属性核验"
+                if not self._has_attribute_evidence(target, product):
+                    # 属性也没有可比维度：这是「未核验」，不能算已排除/等效替代，
+                    # 否则会以 0.0/0.3 的默认分进入比价结论。
+                    return MatchOutcome(
+                        product.id, MatchStatus.CANDIDATE, None, 0.0,
+                        f"{fallback_note}；但目标款与候选无可比属性维度，"
+                        f"本次未完成核验（可稍后重试视觉比对）",
+                    )
                 is_same, conf, reason = self._verifier(target, product)
                 status = (MatchStatus.VERIFIED_SAME if is_same else
                           MatchStatus.REJECTED if conf <= 0 else MatchStatus.VERIFIED_EQUIVALENT)
@@ -218,15 +257,17 @@ class Matcher:
         products: list[Product],
         use_image_recall: bool = False,
         image_threshold: float = IMAGE_RECALL_THRESHOLD,
-        max_workers: int = 8,
+        max_workers: int | None = None,
         progress_cb: Optional[Callable[[int, int], None]] = None,
     ) -> Classification:
         """执行匹配。
 
         默认仅属性核验；可选开启图相似召回（以图找款）。
-        视觉比对为网络 IO，采用线程池并发（默认 8 并发），
-        相比串行可提速数倍；progress_cb(已完成数, 总数) 用于上报进度。
+        视觉比对为网络 IO，采用线程池并发（默认 4 并发，可用 LLM_VISION_CONCURRENCY
+        调整），相比串行可提速数倍；progress_cb(已完成数, 总数) 用于上报进度。
         """
+        if max_workers is None:
+            max_workers = vision_concurrency()
         pool = self.recall(target, products, image_threshold) if use_image_recall else products
         total = len(pool)
         if total == 0:

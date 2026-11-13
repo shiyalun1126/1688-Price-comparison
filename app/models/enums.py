@@ -23,13 +23,40 @@ class MatchStatus(str, Enum):
 
 
 class InquiryStatus(str, Enum):
-    """询价任务状态。"""
+    """询价任务状态（draft→sent 为人工路径，其余为自动谈判路径）。"""
 
-    DRAFT = "draft"          # 话术已生成，待人工发送
-    SENT = "sent"            # 已发送，待卖家回复
-    REPLIED = "replied"      # 有回复，待解析/确认
-    QUOTED = "quoted"        # 已解析出报价
-    CLOSED = "closed"        # 结束（无回复/放弃）
+    DRAFT = "draft"              # 话术已生成，待发送
+    SENDING = "sending"          # 智能体正在打开会话并发送
+    SENT = "sent"                # 已发送，待卖家回复
+    FOLLOWING_UP = "following_up"  # 多轮追问中（信息没问全）
+    REPLIED = "replied"          # 有回复，待解析/确认
+    QUOTED = "quoted"            # 已解析出完整报价
+    NEGOTIATING = "negotiating"  # 议价中（已有报价，正在压价）
+    ESCALATED = "escalated"      # 转人工（风控/异常/卖家拒答）
+    CLOSED = "closed"            # 结束（无回复/放弃）
+    EXPIRED = "expired"          # 超时未回，自动关闭
+
+
+class InquiryStage(str, Enum):
+    """会话所处阶段：先问全信息，再谈价格。"""
+
+    INQUIRY = "inquiry"    # 询价：把所有必问项问清楚
+    BARGAIN = "bargain"    # 议价：拿着市场最低价回头压价
+
+
+class MsgRole(str, Enum):
+    """会话消息的发出方（system 记录智能体自己的动作与判定）。"""
+
+    BUYER = "buyer"      # 我方（智能体替买家发）
+    SELLER = "seller"    # 卖家
+    SYSTEM = "system"    # 系统事件（发送成功/解析结果/转人工原因）
+
+
+class ChatChannel(str, Enum):
+    """会话执行通道。"""
+
+    CDP = "cdp"      # 接管真实浏览器里的旺旺
+    MOCK = "mock"    # 离线模拟（演示与回归测试）
 
 
 class QuoteSource(str, Enum):

@@ -38,3 +38,11 @@ app/web/static/demo/
 data/_demo_raw/
 app/web/index.html.backup
 app/web/static/videos/*.webm
+
+# 界面截图：只保留 README 引用的成品图，迭代过程中的截图不入库
+docs/screenshots/*.png
+!docs/screenshots/dashboard-polo.png
+!docs/screenshots/inquiry-workbench.png
+!docs/screenshots/comparison-result.png
+!docs/screenshots/auto-negotiation-list.png
+!docs/screenshots/auto-negotiation-chat.png

@@ -11,11 +11,12 @@ import httpx
 
 from app.agent.react import ToolSpec
 from app.comparison.comparison import run_comparison
+from app.inquire import detail_facts
 from app.inquire.inquiry import build_inquiry_script
 from app.llm.client import LLMClient
 from app.matcher.matcher import Matcher
 from app.models.entities import Product, Shop, TargetStyle
-from app.models.enums import MatchStatus
+from app.models.enums import MatchStatus, MatchTier
 from app.store.db import Store
 
 # 1688 详情页 offer id 提取（detail.1688.com/offer/<id>.html）
@@ -109,7 +110,7 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                 "提示": "所有候选均已核验过（增量模式），可直接 compare_prices 出比价结论。",
             }
         matcher = Matcher()
-        cls = matcher.run(t, to_match, max_workers=8)
+        cls = matcher.run(t, to_match)   # 并发数走 LLM_VISION_CONCURRENCY（默认 4）
         # 回写
         from datetime import datetime
         pmap = {p.id: p for p in to_match}
@@ -166,8 +167,82 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
         p = next((x for x in prods if x.id == product_id), None)
         if not p:
             return {"error": "商品不存在"}
-        script = build_inquiry_script(t, p, quantity)
+        script = build_inquiry_script(t, p, quantity, facts=detail_facts.load(p))
         return {"话术": script, "商品": p.title[:40], "单价": p.listed_price}
+
+    def auto_inquire(limit: int = 5, target_id: str = "") -> dict:
+        """对当前目标款发起自动谈判（智能体自己去旺旺上问价、追问、议价）。
+
+        只挑「可能同款」且这家店还没聊过的，按核验分层与标价排序取前几家。
+        """
+        from datetime import datetime
+
+        from app.inquire.engine import get_engine
+        from app.models.entities import InquiryTask
+        from app.models.enums import InquiryStatus
+
+        t = store.get_target_style(target_id) if target_id else _current_target()
+        if not t:
+            return {"error": "缺少当前目标款"}
+        engine = get_engine(store)
+        if engine.blocked_reason:
+            return {"error": f"自动谈判已暂停：{engine.blocked_reason}",
+                    "解决办法": "先让用户处理验证码/登录，然后调用 resume 恢复"}
+        if engine.quota_left() <= 0:
+            return {"error": "今日自动询价配额已用完（风控保护）"}
+
+        prods = [
+            p for p in store.list_products(t.id)
+            if p.match_tier in (MatchTier.EXACT, MatchTier.EQUIVALENT)
+            and (p.url or "").startswith("http")
+        ]
+        prods.sort(key=lambda p: (0 if p.match_tier == MatchTier.EXACT else 1,
+                                  p.listed_price if p.listed_price is not None else 9e9))
+        # 一家店只聊一次；已聊过（非 closed）的跳过
+        busy = {s.shop_id for s in store.list_sessions(t.id) if s.status.value != "closed"}
+        picked, seen = [], set()
+        for p in prods:
+            if p.shop_id in busy or p.shop_id in seen:
+                continue
+            seen.add(p.shop_id)
+            picked.append(p)
+            if len(picked) >= max(1, min(limit, 10)):
+                break
+        if not picked:
+            return {"error": "没有可发起自动询价的候选（都聊过了、都已被排除，"
+                             "或还没核验出同款/等效替代）",
+                    "提示": "先跑视觉匹配把「完全同款/等效替代」定出来；"
+                            "如需重发某家，用前端列表里的「自动询价」按钮单条发起。"}
+
+        queued, errors = [], []
+        for p in picked:
+            inq = store.get_inquiry_by_product(t.id, p.id)
+            if inq is None:
+                now = datetime.now()
+                inq = InquiryTask(
+                    id=f"inq-{uuid.uuid4().hex[:12]}", target_style_id=t.id,
+                    product_id=p.id, shop_id=p.shop_id,
+                    script=build_inquiry_script(t, p, None),
+                    status=InquiryStatus.DRAFT, buyer_quantity=None,
+                    created_at=now, updated_at=now,
+                )
+                store.save_inquiry(inq)
+            r = engine.enqueue(inq.id, require_verified=True)
+            if r.get("error"):
+                errors.append({"商品": p.title[:20], "error": r["error"]})
+            else:
+                queued.append({"session_id": r.get("session_id"),
+                               "shop": (store.get_shop(p.shop_id).name
+                                        if store.get_shop(p.shop_id) else p.shop_id),
+                               "标价": p.listed_price})
+        return {
+            "已发起": len(queued),
+            "会话": queued,
+            "失败": errors,
+            "说明": ("智能体会自己发询价、缺什么补问什么、拿市场最低价回头议价，"
+                     "全程约几十分钟到几小时（取决于卖家回复速度）。"
+                     "进度可在询价工作台查看，也可让用户随时暂停接管。"),
+        }
 
     def make_search_link(extra_keywords: str = "") -> dict:
         """生成 1688 搜索链接，指引用户去搜索并回填候选商品（副驾模式）。"""
@@ -449,76 +524,30 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
         前提：用户先用 scripts/start_browser.py 启动抓取浏览器并登录过 1688。
         只读抓取（搜索结果页），不自动发消息、不下单，单次限量防风控。
         """
-        from app.browser import cdp
-
-        if not keywords or not keywords.strip():
-            return {"error": "keywords 不能为空（可先想好搜索词，或参考 plan_search 的策略）"}
-        max_items = max(1, min(int(max_items or 20), 40))
-        if not cdp.is_available():
-            return {
-                "error": "抓取浏览器未运行。",
-                "解决办法": "让用户运行 scripts/start_browser.py 启动抓取浏览器"
-                          "（首次需在新窗口扫码登录一次 1688），然后重新调用本工具。",
-                "降级方案": "暂用 plan_search 生成搜索链接走人工书签导入。",
-            }
-        try:
-            result = cdp.search_offers(keywords, max_items=max_items)
-        except Exception as e:
-            return {"error": f"浏览器抓取失败：{type(e).__name__}: {e}",
-                    "降级方案": "暂用 plan_search 生成搜索链接走人工书签导入。"}
-        if result.get("login_required"):
-            return {
-                "error": "抓取浏览器未登录 1688。",
-                "解决办法": "请在抓取浏览器窗口里扫码登录一次 1688（登录态会记住），"
-                          "然后重新调用本工具。",
-            }
-        items = cdp.normalize_items(result.get("items"), max_items)
-        if not items:
-            return {"error": "搜索页没有提取到商品卡片（可能是关键词太偏或页面改版）",
-                    "关键词": keywords, "降级方案": "换关键词重试，或走 plan_search 人工路。"}
+        from app.browser.ingest import crawl_into_target
 
         t = _current_target()
         if not t:
             return {"error": "缺少当前目标款（请先选定目标款）"}
 
-        # 店铺 get_or_create（真实店名），商品 id=auto-{offer_id}，图片落盘
-        shops_by_name = {s.name: s.id for s in store.list_shops()}
-        upload_dir = Path(__file__).resolve().parents[2] / "data" / "uploads"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        imported, skipped, img_ok, shops_touched = 0, 0, 0, set()
-        for it in items:
-            pid = f"auto-{it['offer_id']}"
-            if store.get_product(pid):
-                skipped += 1
-                continue
-            shop_name = it["shop"] or "1688搜索（卖家未记录）"
-            if shop_name in shops_by_name:
-                sid = shops_by_name[shop_name]
-            else:
-                sid = uuid.uuid4().hex
-                store.save_shop(Shop(id=sid, name=shop_name))
-                shops_by_name[shop_name] = sid
-            image_paths = []
-            local = cdp.download_image(it["image"], upload_dir) if it["image"] else None
-            if local:
-                # 存绝对路径，与书签导入口径一致（matcher 只认本地文件路径）
-                image_paths = [str(upload_dir / Path(local).name)]
-                img_ok += 1
-            store.save_product(Product(
-                id=pid, target_style_id=t.id, shop_id=sid,
-                title=it["title"], url=it["url"], listed_price=it["price"],
-                image_paths=image_paths,
-                match_status=MatchStatus.CANDIDATE,
-                match_reason="智能体浏览器搜索导入（真实店铺）",
-            ))
-            shops_touched.add(shop_name)
-            imported += 1
+        r = crawl_into_target(store, t, keywords, max_items)
+        if not r.get("ok"):
+            return {
+                "error": r.get("error"),
+                "解决办法": ("让用户运行 scripts/start_browser.py 启动抓取浏览器"
+                          "（首次需在新窗口扫码登录一次 1688），然后重新调用本工具。")
+                          if r.get("hint") == "browser_down" else
+                          ("请在抓取浏览器窗口里扫码登录一次 1688（登录态会记住）。")
+                          if r.get("hint") == "login_required" else
+                          "换关键词重试，或让用户走书签导入。",
+                "降级方案": "换关键词重试；仍不行则走导入页的书签方式。",
+            }
         return {
-            "导入数": imported,
-            "跳过(已存在)": skipped,
-            "图片落盘": img_ok,
-            "涉及店铺": len(shops_touched),
-            "关键词": keywords,
+            "导入数": r["imported"],
+            "跳过(已存在)": r["skipped"],
+            "图片落盘": r["images"],
+            "涉及店铺": r["shops"],
+            "关键词": r["keywords"],
             "下一步": ("候选已入库且多数带图。建议直接调用 match_products 做视觉核验，"
                       "然后 compare_prices 出比价结论。"),
         }
@@ -697,6 +726,25 @@ def build_tools(store: Store, current_target_id: str | None = None) -> list[Tool
                 "required": ["target_id", "product_id"],
             },
             func=inquiry_script,
+        ),
+        ToolSpec(
+            name="auto_inquire",
+            description=(
+                "发起自动谈判：智能体接管已登录的 1688 浏览器，自己去店铺会话里发询价、"
+                "缺什么补问什么、拿到报价后拿全市场最低价回头议价，报价自动入库并进比价表。"
+                "当用户说「帮我去问问价」「跟商家谈谈价」「自动询价」时用这个，"
+                "不要用 inquiry_script（那个只生成话术，需要人自己去发）。"
+                "只挑可能同款且没聊过的店铺，单次最多 10 家。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "最多发起几家（默认 5，上限 10）"},
+                    "target_id": {"type": "string", "description": "目标款 ID（缺省用当前选中的）"},
+                },
+                "required": [],
+            },
+            func=auto_inquire,
         ),
     ]
     return tools

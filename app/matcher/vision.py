@@ -224,13 +224,30 @@ def _repair_json(text: str, api_key: str, base_url: str, model: str, timeout: fl
     return _parse_json(out, _VISION_KEYS)
 
 
+def _retry_delay(err: Exception, attempt: int) -> float:
+    """重试等待秒数。
+
+    网关/上游限流（HTTP 429/503）会带 Retry-After，此时按服务端建议退避；
+    其余错误沿用原来的线性退避（1.5s、3s…）。账号池满载时"稍等几秒"才有效，
+    立刻重试仍然会 503，所以给 2s 保底。
+    """
+    resp = getattr(err, "response", None)
+    if resp is not None and getattr(resp, "status_code", None) in (429, 503):
+        try:
+            wait = float(resp.headers.get("retry-after") or 2.0)
+        except (AttributeError, TypeError, ValueError):
+            wait = 2.0
+        return max(wait, 2.0) * (attempt + 1)
+    return 1.5 * (attempt + 1)
+
+
 def compare_images(
     img_a: str,
     img_b: str,
     category: Optional[str] = None,
     model: Optional[str] = None,
     timeout: float = 120.0,
-    retries: int = 2,
+    retries: int = 4,
     recheck: bool = False,
 ) -> dict:
     """比对两张图，返回 {same, confidence, tier, reason, key_diff}。
@@ -240,7 +257,8 @@ def compare_images(
     recheck：复核模式，换一套独立视角的问法再判定一次（用于低置信度二次复核，
     与首次判定交叉验证，收敛边界案例的抖动）。
 
-    内置重试：视觉模型对大 b64 负载偶发返回空/截断内容。
+    内置重试：视觉模型对大 b64 负载偶发返回空/截断内容；上游账号池满载会返回
+    429/503，按 Retry-After 退避重试（配合较低的并发数可基本消除）。
     """
     api_key = os.getenv("LLM_API_KEY", "") or os.getenv("DEEPSEEK_API_KEY", "")
     base_url = (os.getenv("LLM_BASE_URL", "")
@@ -299,7 +317,7 @@ def compare_images(
         except Exception as e:
             last_err = e
             if attempt < retries:
-                time.sleep(1.5 * (attempt + 1))
+                time.sleep(_retry_delay(e, attempt))
                 continue
             raise RuntimeError(f"视觉比对失败（已重试 {retries} 次）: {last_err}") from last_err
     raise RuntimeError(f"视觉比对失败: {last_err}")

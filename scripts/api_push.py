@@ -38,8 +38,10 @@ async def push_commit(remote_parent_sha, commit_sha, diff_parent_sha):
     msg = msg.rstrip("\n")
 
     # 变更文件清单（相对本地父提交；远程父仅用于挂链，sha 可能不同）
-    diff = run("git", "diff-tree", "-r", "--no-renames", "--name-status",
-               diff_parent_sha, commit_sha)
+    # core.quotepath=false：否则中文路径会被转义成 "docs/\346\234\254..." 再加引号，
+    # 后面 ls-tree / blob 上传全都找不到这个文件。
+    diff = run("git", "-c", "core.quotepath=false", "diff-tree", "-r", "--no-renames",
+               "--name-status", diff_parent_sha, commit_sha)
     entries, blobs = [], 0
     for line in diff.splitlines():
         status, path = line.split("\t", 1)

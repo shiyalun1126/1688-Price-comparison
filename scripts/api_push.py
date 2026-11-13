@@ -6,8 +6,10 @@
 """
 import base64
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
 REPO = "shiyalun1126/1688-Price-comparison"
 API = f"https://api.github.com/repos/{REPO}"
@@ -20,7 +22,11 @@ def run(*args):
 
 
 def api(method, path, js=None):
-    """走 curl 而不是 httpx：本机代理对 httpx 的 TLS 握手不稳，间歇性 SSL EOF。"""
+    """走 curl 而不是 httpx：本机代理对 httpx 的 TLS 握手不稳，间歇性 SSL EOF。
+
+    请求体落临时文件（`--data-binary @文件`）而不是当命令行参数传：
+    Windows 命令行上限 32767 字符，一份 30KB 的样式表 base64 之后就是 WinError 206。
+    """
     cmd = [
         "curl", "-sS", "--max-time", "120",
         "--retry", "4", "--retry-delay", "2", "--retry-all-errors",
@@ -28,10 +34,22 @@ def api(method, path, js=None):
         "-H", f"Authorization: Bearer {token}",
         "-H", "Accept: application/vnd.github+json",
     ]
+    tmp_path = None
     if js is not None:
-        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(js)]
+        fd, tmp_path = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "wb") as f:
+            f.write(json.dumps(js).encode("utf-8"))
+        cmd += ["-H", "Content-Type: application/json",
+                "--data-binary", f"@{os.path.abspath(tmp_path)}"]
     cmd.append(f"{API}{path}")
-    r = subprocess.run(cmd, capture_output=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     if r.returncode != 0:
         raise RuntimeError(f"{method} {path} curl 失败: {r.stderr.decode('utf-8','replace')[:200]}")
     out = r.stdout.decode("utf-8", "replace").strip()

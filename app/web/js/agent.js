@@ -131,3 +131,24 @@ function renderPlanBlock(plan) {
   }
   return html + `</div>`;
 }
+// ==================== 控制台收起 / 展开 ====================
+// 右栏空着的时候仍占 400px，而询价表 6 列在 880px 里会折行。
+// 收起后主区直接多出 350px；展开状态记在 localStorage，不用每次点。
+const CONSOLE_KEY = 'wb-console-collapsed';
+
+function toggleConsole(force) {
+  const con = document.getElementById('agent-console');
+  const grid = con && con.closest('.workbench-grid');
+  if (!con || !grid) return;
+  const collapsed = typeof force === 'boolean' ? force : !con.classList.contains('collapsed');
+  con.classList.toggle('collapsed', collapsed);
+  grid.classList.toggle('console-collapsed', collapsed);
+  try { localStorage.setItem(CONSOLE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+}
+
+// 默认收起：第一次进来看到的是满宽主区，竖脊上写着「智能体」，点一下就开
+(function initConsoleState() {
+  let want = null;
+  try { want = localStorage.getItem(CONSOLE_KEY); } catch (e) {}
+  toggleConsole(want === null ? true : want === '1');
+})();

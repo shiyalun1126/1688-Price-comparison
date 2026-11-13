@@ -12,16 +12,44 @@ function showTab(name) {
   if (navEl) navEl.classList.add('active');
   const titles = {
     home: ['工作台', '以款找源 · 全网比价'],
-    import: ['导入书签', '从 1688 页面一键抓取候选'],
+    import: ['书签导入', '兜底通道 · 在 1688 页面上点一下'],
     tutorial: ['使用说明', '快速上手与面试演示'],
   };
   const t = titles[name] || titles.home;
   document.getElementById('page-title').textContent = t[0];
   document.getElementById('page-sub').textContent = t[1];
-  document.getElementById('pipeline').classList.toggle('is-hidden', name !== 'home');
+  // 流程子项只在工作台下有意义；回到工作台时恢复上次的展开状态
+  const pipe = document.getElementById('pipeline');
+  if (pipe) {
+    pipe.classList.toggle('is-hidden', name !== 'home');
+    if (name === 'home') setPipeOpen(localStorage.getItem(PIPE_OPEN_KEY) !== '0');
+  }
   if (name === 'import') refreshImportTargets(currentTargetId);
   window.scrollTo({ top: 0 });
 }
+
+// ==================== 工作台下拉（流程子项） ====================
+// 原先流程条横在主区顶部，占掉一行；现在收进侧栏「工作台」下面，点开才展开。
+const PIPE_OPEN_KEY = 'wb-pipe-open';
+
+function setPipeOpen(open) {
+  const pipe = document.getElementById('pipeline');
+  const btn = document.getElementById('nav-home');
+  if (!pipe) return;
+  pipe.classList.toggle('is-collapsed', !open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  try { localStorage.setItem(PIPE_OPEN_KEY, open ? '1' : '0'); } catch (e) {}
+}
+
+function onNavHome() {
+  const onHome = document.getElementById('tab-home').classList.contains('active');
+  if (!onHome) { showTab('home'); return; }   // 从使用说明切回来，顺手展开
+  const pipe = document.getElementById('pipeline');
+  setPipeOpen(pipe.classList.contains('is-collapsed'));
+}
+
+// 首载：默认展开，之后记住上次是开是合
+setPipeOpen(localStorage.getItem(PIPE_OPEN_KEY) !== '0');
 
 // ==================== 状态变量 ====================
 let currentTargetId = null;
@@ -32,12 +60,13 @@ let targetsCount = 0;
 let lastMatchResult = null;
 let importCurrentTargetId = null;
 let inqFilter = 'all';
+// 候选池的分层筛选。这里只回答「哪些值得去问」，跟「谈到哪一步」无关——
+// 谈没谈由 04 区的状态分组负责，两者不要再混在一排按钮里。
 const INQ_FILTERS = [
   { key: 'all', label: '全部', match: q => true },
   { key: 'exact', label: '完全同款', match: q => (q.tier || 'unverified') === 'exact' },
   { key: 'equivalent', label: '等效替代', match: q => (q.tier || 'unverified') === 'equivalent' },
-  { key: 'quoted', label: '已报价', match: q => q.price_source === 'quoted' || q.status === 'quoted' },
-  { key: 'unverified', label: '未核验', match: q => (q.tier || 'unverified') === 'unverified' && q.price_source !== 'quoted' },
+  { key: 'unverified', label: '未核验', match: q => (q.tier || 'unverified') === 'unverified' },
   { key: 'rejected', label: '已排除', match: q => (q.tier || 'unverified') === 'rejected' },
 ];
 
@@ -108,7 +137,7 @@ async function deleteTarget(id, name) {
     if (currentTargetId === id) {
       currentTargetId = null;
       lastMatchResult = null;
-      document.getElementById('result').innerHTML = '<div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
+      document.getElementById('result').innerHTML = '<div class="empty compact">先「执行视觉匹配」分出完全同款与等效替代，再「生成比价结论」看价格对比、成交条件与采购建议。</div>';
       document.getElementById('workbench').innerHTML = '<p class="muted">请先选择或创建一个目标款</p>';
       document.getElementById('btn-export').disabled = true;
     }
@@ -203,7 +232,8 @@ async function updatePipeline() {
     : products.filter(p => p.tier === 'exact' || p.tier === 'equivalent').length;
   const inquiryCount = (inquiries || []).length;
   const quoted = (inquiries || []).filter(q => q.status === 'quoted').length;
-  const counts = [currentTargetId ? 1 : 0, products.length, matched, inquiryCount, quoted];
+  // 四步与页面四个区块一一对应（03 已合并「匹配与比价」）
+  const counts = [currentTargetId ? 1 : 0, products.length, matched, inquiryCount];
 
   let seenActive = false;
   counts.forEach((c, i) => {
@@ -217,6 +247,13 @@ async function updatePipeline() {
     if (badge) badge.textContent = c > 0 ? String(c) : '';
   });
 
+  const inqStep = steps[3];
+  if (inqStep) {
+    inqStep.title = inquiryCount
+      ? `已发起 ${inquiryCount} 家，已报价 ${quoted} 家`
+      : '还没开始询价';
+  }
+
   const sp = document.getElementById('stat-products');
   if (sp) sp.textContent = products.length;
 
@@ -226,30 +263,122 @@ async function updatePipeline() {
 document.querySelectorAll('.pipe-step').forEach(el => {
   el.addEventListener('click', () => {
     const zone = document.getElementById(el.dataset.zone);
-    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!zone) return;
+    unfoldZone(zone);                   // 折叠着还滚过去，会看到一片空白
+    zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
+
+// ==================== 区块折叠 ====================
+// 抓一批候选进来之后四个区块一起铺开有两屏多，但多数时候你只在一处干活。
+// 折叠不删任何功能，只是把「现在不看的」收起来；状态存本地，下次进来还是你摆的样子。
+const ZONE_FOLD_KEY = 'wb-folded-zones';
+let foldedZones = null;
+
+function loadFoldedZones() {
+  if (foldedZones) return foldedZones;
+  try { foldedZones = new Set(JSON.parse(localStorage.getItem(ZONE_FOLD_KEY) || '[]')); }
+  catch (e) { foldedZones = new Set(); }
+  return foldedZones;
+}
+
+function toggleZone(zone, force) {
+  if (typeof zone === 'string') zone = document.getElementById(zone);
+  if (!zone) return;
+  const folded = typeof force === 'boolean' ? force : !zone.classList.contains('folded');
+  zone.classList.toggle('folded', folded);
+  const set = loadFoldedZones();
+  if (folded) set.add(zone.id); else set.delete(zone.id);
+  try { localStorage.setItem(ZONE_FOLD_KEY, JSON.stringify([...set])); } catch (e) {}
+}
+
+function unfoldZone(zone) { toggleZone(zone, false); }
+
+(function initZoneFold() {
+  const set = loadFoldedZones();
+  document.querySelectorAll('.zone').forEach(z => {
+    if (set.has(z.id)) z.classList.add('folded');
+    const title = z.querySelector('.zone-title');
+    if (!title) return;
+    title.classList.add('zone-title-btn');
+    title.title = '点一下折叠 / 展开这个区块';
+    title.addEventListener('click', () => toggleZone(z));
+  });
+})();
 
 // ==================== 门店 ====================
 async function loadShops() {
   const list = await api('/api/shops');
   shops = Array.isArray(list) ? list : [];
   const sel = document.getElementById('shop-select');
-  sel.innerHTML = shops.map(s => `<option value="${s.id}">${escapeHtml(s.name)}${s.location ? escapeHtml(' · ' + s.location) : ''}</option>`).join('');
+  // 手工添加表单已下线（候选统一走关键词抓取），select 不存在时不要报错
+  if (sel) sel.innerHTML = shops.map(s => `<option value="${s.id}">${escapeHtml(s.name)}${s.location ? escapeHtml(' · ' + s.location) : ''}</option>`).join('');
   updatePipeline();
 }
 async function createShop() {
-  const name = document.getElementById('shop-name').value.trim();
+  // 手工添加表单已从页面下线（候选改走关键词抓取），这些 DOM 不再存在，
+  // 函数保留是为了老备份页面/临时脚本还能调，调用时不要炸。
+  const nameEl = document.getElementById('shop-name');
+  if (!nameEl) return;
+  const name = nameEl.value.trim();
   if (!name) return alert('填写门店名');
   await api('/api/shops', { method: 'POST', body: JSON.stringify({ name }) });
-  document.getElementById('shop-name').value = '';
+  nameEl.value = '';
   loadShops();
+}
+
+// ==================== 找货源（关键词抓取） ====================
+async function crawlCandidates() {
+  if (!currentTargetId) { alert('请先选择目标款'); return; }
+  const input = document.getElementById('crawl-keywords');
+  const btn = document.getElementById('btn-crawl');
+  const hint = document.getElementById('crawl-hint');
+  const kw = (input.value || '').trim();
+  if (!kw) { input.focus(); if (hint) hint.textContent = '先填关键词'; return; }
+
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '抓取中…';
+  if (hint) hint.textContent = '正在用已登录的浏览器搜 1688，约 20 秒';
+  let newCount = 0;
+  try {
+    const r = await api(`/api/targets/${currentTargetId}/crawl`,
+      { method: 'POST', body: JSON.stringify({ keywords: kw, max_items: 20 }) });
+    if (r.error || r.ok === false) {
+      if (hint) hint.textContent = r.error || '抓取失败';
+    } else if (!r.imported && r.skipped) {
+      if (hint) hint.textContent = `这 ${r.skipped} 件都已在候选里了，换个关键词`;
+    } else {
+      newCount = r.imported || 0;
+      if (hint) hint.textContent = `新增 ${r.imported} 件 / ${r.shops} 家店，跳过 ${r.skipped} 件已存在`;
+      input.value = '';
+    }
+  } catch (e) {
+    if (hint) hint.textContent = '抓取失败：' + (e && e.message ? e.message : e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+    updatePipeline();
+    await refreshInquiries();
+    // 刚抓进来的都在「待询价」组，而那组默认收起；抓完主动摊开并滚过去，
+    // 否则你看到的是「新增 20 件」，却在页面上找不到这 20 件在哪。
+    if (newCount) {
+      const open = loadInqOpen();
+      open.add('todo');
+      try { localStorage.setItem(INQ_OPEN_KEY, JSON.stringify([...open])); } catch (e) {}
+      renderWorkbench();
+      const zone = document.getElementById('zone-inquiry');
+      if (zone) { unfoldZone(zone); zone.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
+  }
 }
 
 // ==================== 候选商品 ====================
 async function createProduct() {
-  if (!currentTargetId) return alert('先选择目标款');
+  // 同 createShop：表单位置已换成「找货源」抓取行，DOM 不存在时安全退出
   const sel = document.getElementById('shop-select');
+  if (!sel) return;
+  if (!currentTargetId) return alert('先选择目标款');
   if (!sel.value) return alert('先添加并选择门店');
   const form = new FormData();
   form.append('target_style_id', currentTargetId);

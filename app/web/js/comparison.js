@@ -64,35 +64,49 @@ async function runMatch() {
 
   lastMatchResult = r;
   document.getElementById('btn-export').disabled = false;
+  renderMatchResult(r);
+  updatePipeline();
+}
 
+// 把匹配结果画成四组。抽成独立函数：既供 runMatch 调用，也能拿库里已有的
+// 结果直接重绘（复核版面、截图回归时不必再烧一次视觉模型）。
+function renderMatchResult(r) {
   let html = '';
-  const render = (title, list, cls) => {
+  const card = (m, cls) => {
+    const img = m.product && m.product.image_paths && m.product.image_paths.length
+      ? `<img src="${m.product.image_paths[0]}" alt="">` : '';
+    const price = m.product && m.product.listed_price != null && m.product.listed_price > 0
+      ? `<span class="price">¥${Number(m.product.listed_price).toFixed(2)}</span>`
+      : '<span class="muted">未抓到价</span>';
+    return `<div class="match-card">
+      ${img}
+      <div class="info">
+        <div class="shop">${escapeHtml(m.shop_name || m.product_id || '')}${price}</div>
+        <div class="tag ${cls}">${m.status}</div>
+        <div class="reason">${escapeHtml(m.reason || '')}</div>
+      </div>
+    </div>`;
+  };
+  // 已排除/未核验往往是几十上百条，平铺会把页面拉成几屏，真正要看的同款被顶掉。
+  // 这两组默认收成一行摘要，点开才展开（同款与替代保持全量可见，它们才是决策依据）。
+  const render = (title, list, cls, opt = {}) => {
     if (!list.length) return '';
-    let h = `<div class="match-col"><h3>${title} <span class="n">${list.length}</span></h3>`;
-    h += list.map(m => {
-      const img = m.product && m.product.image_paths && m.product.image_paths.length
-        ? `<img src="${m.product.image_paths[0]}" alt="">` : '';
-      const price = m.product && m.product.listed_price != null && m.product.listed_price > 0
-        ? `<span class="price">¥${Number(m.product.listed_price).toFixed(2)}</span>`
-        : '<span class="muted">未抓到价</span>';
-      return `<div class="match-card">
-        ${img}
-        <div class="info">
-          <div class="shop">${escapeHtml(m.shop_name || m.product_id || '')}${price}</div>
-          <div class="tag ${cls}">${m.status}</div>
-          <div class="reason">${escapeHtml(m.reason || '')}</div>
-        </div>
-      </div>`;
-    }).join('');
-    h += '</div>';
-    return h;
+    const head = `<h3>${title} <span class="n">${list.length}</span>`
+      + (opt.fold ? `<span class="fold-hint">${opt.hint || ''}</span>` : '') + '</h3>';
+    const cards = list.map(m => card(m, cls)).join('');
+    if (opt.fold) {
+      return `<details class="match-col fold"><summary>${head}</summary>`
+        + `<div class="cards">${cards}</div></details>`;
+    }
+    return `<div class="match-col">${head}${cards}</div>`;
   };
   html += render('完全同款', r.exact, 'exact');
   html += render('等效替代', r.equivalent, 'equiv');
-  html += render('已排除', r.rejected, 'other');
-  html += render('未核验候选', r.candidate, 'other');
+  html += render('已排除', r.rejected, 'other',
+                 { fold: true, hint: '· 都已判为不是这款，点开可复核' });
+  html += render('未核验候选', r.candidate, 'other',
+                 { fold: true, hint: '· 还没判定，点开查看' });
   document.getElementById('result').innerHTML = html || '<div class="empty">无匹配结果</div>';
-  updatePipeline();
 }
 
 // ==================== 比价 ====================
@@ -173,7 +187,7 @@ async function loadCachedComparison() {
   if (currentTargetId !== capturedId) return;
   if (!r || r.error || r.cached === false) {
     if (r && r.cached === false) {
-      el.innerHTML = '<div class="empty">尚无比价结论。先「执行视觉匹配」分出同款与替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>';
+      el.innerHTML = '<div class="empty compact">尚无结论。先「执行视觉匹配」分出同款与替代，再「生成比价结论」看价格对比与采购建议。</div>';
     }
     return;
   }

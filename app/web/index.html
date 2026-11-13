@@ -18,14 +18,18 @@
     </div>
   </div>
   <nav class="nav">
-    <button type="button" class="nav-tab active" data-tab="home" onclick="showTab('home')">
+    <button type="button" class="nav-tab active" id="nav-home" data-tab="home" aria-expanded="true" aria-controls="pipeline" onclick="onNavHome()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>
       工作台
+      <svg class="nav-caret" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 4.5 3 3 3-3"/></svg>
     </button>
-    <button type="button" class="nav-tab" data-tab="import" onclick="showTab('import')">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h8a1 1 0 0 1 1 1V14.5l-5-2.5L3 14.5V2.5a1 1 0 0 1 1-1Z"/></svg>
-      导入书签
-    </button>
+    <!-- 流程导航：从主区那一条横排挪进来，作为「工作台」的下拉子项 -->
+    <nav class="pipeline" id="pipeline" aria-label="工作台流程">
+      <button type="button" class="pipe-step" data-zone="zone-target"><span class="pipe-num">1</span><span class="pipe-label">目标款</span><span class="pipe-count" id="pipe-c1"></span></button>
+      <button type="button" class="pipe-step" data-zone="zone-candidates"><span class="pipe-num">2</span><span class="pipe-label">候选商品</span><span class="pipe-count" id="pipe-c2"></span></button>
+      <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">3</span><span class="pipe-label">匹配与比价</span><span class="pipe-count" id="pipe-c3"></span></button>
+      <button type="button" class="pipe-step" data-zone="zone-inquiry"><span class="pipe-num">4</span><span class="pipe-label">询价工作台</span><span class="pipe-count" id="pipe-c4"></span></button>
+    </nav>
     <button type="button" class="nav-tab" data-tab="tutorial" onclick="showTab('tutorial')">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M6 6a2 2 0 1 1 3 1.7c-.7.4-1 1-1 1.8"/><circle cx="8" cy="12" r=".4" fill="currentColor"/></svg>
       使用说明
@@ -37,9 +41,10 @@
     <div class="side-stat"><span class="k">店铺</span><span class="v" id="stat-shops">–</span></div>
   </div>
   <div class="side-foot">
-    <button type="button" class="btn default" onclick="showDemo()">
+    <button type="button" class="btn default" onclick="showDemo()"
+            title="自动挑一个带图片、已有候选商品的目标款，切到工作台跑一遍视觉匹配">
       <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.8a1 1 0 0 1 1.5-.87l8 5.2a1 1 0 0 1 0 1.74l-8 5.2A1 1 0 0 1 3 12.2V1.8Z"/></svg>
-      演示模式
+      一键看效果
     </button>
     <div class="side-status"><span class="dot"></span>本地服务运行中</div>
   </div>
@@ -66,15 +71,6 @@
       </div>
     </div>
   </header>
-
-  <!-- 流程步骤条 -->
-  <nav class="pipeline" id="pipeline">
-    <button type="button" class="pipe-step" data-zone="zone-target"><span class="pipe-num">1</span><span class="pipe-label">目标款</span><span class="pipe-count" id="pipe-c1"></span></button>
-    <button type="button" class="pipe-step" data-zone="zone-candidates"><span class="pipe-num">2</span><span class="pipe-label">候选商品</span><span class="pipe-count" id="pipe-c2"></span></button>
-    <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">3</span><span class="pipe-label">视觉匹配</span><span class="pipe-count" id="pipe-c3"></span></button>
-    <button type="button" class="pipe-step" data-zone="zone-inquiry"><span class="pipe-num">4</span><span class="pipe-label">询价</span><span class="pipe-count" id="pipe-c4"></span></button>
-    <button type="button" class="pipe-step" data-zone="zone-result"><span class="pipe-num">5</span><span class="pipe-label">比价结论</span><span class="pipe-count" id="pipe-c5"></span></button>
-  </nav>
 
   <main class="content">
 
@@ -136,20 +132,17 @@
                 </button>
               </div>
             </div>
-            <p class="zone-hint">书签从 1688 批量导入，或在此手动添加；匹配只对当前目标款下的候选执行。</p>
+            <p class="zone-hint">输入关键词，智能体用已登录的浏览器搜 1688，把结果直接落成候选（含真实店铺名与主图）。</p>
             <div class="sub-row">
-              <span class="row-label">门店</span>
-              <select id="shop-select"></select>
-              <input id="shop-name" class="grow" placeholder="新门店名，例：义乌XX服饰">
-              <button type="button" class="btn default sm" onclick="createShop()">添加门店</button>
+              <span class="row-label">找货源</span>
+              <input id="crawl-keywords" class="grow" placeholder="关键词，例：德训鞋 男 复古 板鞋"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();crawlCandidates()}">
+              <button type="button" class="btn primary sm" id="btn-crawl" onclick="crawlCandidates()">从 1688 抓候选</button>
+              <span class="muted" id="crawl-hint" style="font-size:11px"></span>
             </div>
-            <div class="sub-row">
-              <span class="row-label">商品</span>
-              <input id="prod-title" class="grow" placeholder="候选商品标题">
-              <input id="prod-price" class="w-90" type="number" step="0.01" placeholder="标价 ¥">
-              <span style="display:flex;align-items:center;gap:8px"><label class="file-btn">选择图片<input id="prod-image" class="w-180" type="file" accept="image/*" hidden></label><span class="file-name">未选择</span></span>
-              <input id="prod-attr" class="grow" placeholder='属性 JSON，可选'>
-              <button type="button" class="btn default sm" onclick="createProduct()">添加候选</button>
+            <div class="sub-row" id="cand-pool-row">
+              <span class="row-label">候选池</span>
+              <div id="inq-chips" class="cand-pool"></div>
             </div>
             <div id="progress" style="display:none">
               <div class="progress-track"><div id="progress-bar"></div></div>
@@ -163,7 +156,7 @@
               <div class="zone-title"><span class="zone-index">03</span>匹配与比价</div>
             </div>
             <div id="result">
-              <div class="empty">选好目标款与候选商品后，先「执行视觉匹配」分出完全同款与等效替代，<br>再「生成比价结论」查看价格对比、成交条件与采购建议。</div>
+              <div class="empty compact">先「执行视觉匹配」分出完全同款与等效替代，再「生成比价结论」看价格对比、成交条件与采购建议。</div>
             </div>
           </section>
 
@@ -172,6 +165,14 @@
             <div class="zone-head">
               <div class="zone-title"><span class="zone-index">04</span>询价工作台</div>
               <div class="zone-actions">
+                <button type="button" class="btn primary sm" onclick="startAutoInquiry('cdp')"
+                        title="智能体自动打开店铺会话：发询价、追问缺口、拿市场价议价">
+                  ⚡ 自动询价
+                </button>
+                <button type="button" class="btn default sm" onclick="startAutoInquiry('mock')"
+                        title="剧本卖家：不碰真实账号、不用等回复，3 分钟看完整个谈判过程">
+                  ▷ 演示一遍
+                </button>
                 <input id="inquiry-search" type="search" placeholder="搜索店铺 / 商品名…" autocomplete="off"
                        style="width:180px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--paper);font:inherit;font-size:12px;color:var(--ink)"
                        oninput="renderWorkbench()">
@@ -181,20 +182,27 @@
                 </button>
               </div>
             </div>
-            <p class="zone-hint">逐个店铺生成话术 → 去旺旺发送 → 回贴卖家回复 → 自动解析报价。</p>
-            <div id="inq-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px"></div>
+            <p class="zone-hint">智能体自动发消息、缺什么补问什么、拿市场价回头议价；也可手动生成话术走人工路径。</p>
+            <div id="auto-bar" class="auto-bar"></div>
+            <div id="auto-pop" class="auto-pop" hidden></div>
+            <div id="auto-warn" class="auto-warn" style="display:none"></div>
             <div id="workbench"></div>
           </section>
 
         </div>
 
         <!-- 智能体控制台 -->
-        <aside class="console">
+        <aside class="console" id="agent-console">
+          <div class="console-spine" onclick="toggleConsole()" title="展开智能体控制台">
+            <span class="console-spine-label">智能体</span>
+            <span class="console-spine-arrow">‹</span>
+          </div>
           <div class="console-head">
             <span class="console-dot"></span>
             <span class="console-title">智能体控制台</span>
             <span class="console-sub">ReAct · 自主规划</span>
             <button type="button" class="console-clear" onclick="clearAgentHistory()">清空</button>
+            <button type="button" class="console-toggle" onclick="toggleConsole()" title="收起控制台（把宽度让给主区）">›</button>
           </div>
           <div class="console-body">
             <div class="console-goal">
@@ -221,46 +229,36 @@
     <div id="tab-import" class="tab-content">
       <div class="page">
         <div class="page-head">
-          <h2>导入书签</h2>
-          <p>在 1688 页面点一下书签，自动抓取标题、主图、价格、店铺并入库。支持搜索列表页批量导入与商品详情页单条导入。</p>
+          <h2>书签导入</h2>
+          <p>兜底通道：在 1688 页面上点一下书签，抓当前页的商品入库。日常批量找货源用工作台的「从 1688 抓候选」更快；这条路留着是因为它在你已经打开的页面上运行，<b>不会撞验证码</b>——详情页有滑块，人过完之后书签才跑得通。</p>
+          <p style="margin-top:10px"><button type="button" class="btn default sm" onclick="showTab('tutorial')">← 返回使用说明</button></p>
         </div>
         <div class="guide">
           <div class="guide-step">
-            <div class="guide-num">0</div>
-            <div>
-              <h3>选择要导入到哪个目标款</h3>
-              <select id="target-select-import"></select>
-              <label class="check"><input type="checkbox" id="create-new-target"><span>将此页商品设为<b>新目标款</b>（面试演示用）</span></label>
-              <p class="muted">勾选后，在详情页点书签会先创建新目标款，再把当前商品挂到其下。</p>
-            </div>
-          </div>
-          <div class="guide-step">
             <div class="guide-num">1</div>
             <div>
-              <h3>把书签拖到浏览器书签栏</h3>
+              <h3>选目标款，把书签拖进书签栏</h3>
+              <select id="target-select-import"></select>
+              <label class="check"><input type="checkbox" id="create-new-target"><span>把这件商品设为<b>新目标款</b>（现场被给一个款时用）</span></label>
+              <p class="muted" style="margin-top:12px">拖下面这个按钮到书签栏。拖不动就右键复制链接地址，手动新建一个书签再粘贴。</p>
               <a id="bm-btn" class="bm-btn" href="#" onclick="return false;">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8m0 0L5 7m3 3 3-3M2.5 12.5h11"/></svg>
                 导入 1688 商品
               </a>
-              <p class="muted">拖不动就右键「复制链接地址」，手动新建书签并粘贴。</p>
             </div>
           </div>
           <div class="guide-step">
             <div class="guide-num">2</div>
             <div>
-              <h3>在 1688 页面点击书签</h3>
-              <p><b>方式 A（批量，推荐）</b>：在搜索列表页 <code>s.1688.com/selloffer/…</code> 点书签 → 抓取全页商品 → 批量导入。</p>
-              <p><b>方式 B（单条）</b>：在商品详情页 <code>detail.1688.com/offer/…</code> 点书签 → 导入当前商品。</p>
+              <h3>在 1688 页面上点一下</h3>
+              <p><b>搜索列表页</b> <code>s.1688.com/selloffer/…</code> → 整页商品批量入库。</p>
+              <p><b>商品详情页</b> <code>detail.1688.com/offer/…</code> → 只导入当前这一件。想精确补某一个款，用这个。</p>
             </div>
           </div>
-          <div class="guide-step">
-            <div class="guide-num">…</div>
-            <div>
-              <h3>排查：书签源码</h3>
-              <p class="muted">如需手动新建书签，把下面代码作为书签 URL：</p>
-              <textarea id="bm-code" rows="8" readonly></textarea>
-            </div>
-          </div>
+          <details class="guide-more">
+            <summary>书签源码（要手动新建书签时用）</summary>
+            <textarea id="bm-code" rows="6" readonly></textarea>
+          </details>
         </div>
       </div>
     </div>
@@ -270,61 +268,84 @@
       <div class="page">
         <div class="page-head">
           <h2>使用说明</h2>
-          <p>四步走完一次完整的以款找源：建目标款 → 导入候选 → 匹配 → 比价询价。</p>
+          <p>四步走完一次完整的以款找源：建目标款 → 抓候选 → 视觉匹配 → 自动询价。</p>
         </div>
 
         <div class="tut-block">
           <h3><span class="zone-index">01</span>快速上手</h3>
           <ol class="tut-list">
-            <li><b>创建目标款</b>：工作台「＋ 新建目标款」，填名称并上传图片（视觉匹配必选）。</li>
-            <li><b>导入候选</b>：切到「导入书签」页拿书签，去 1688 搜索页或详情页点一下。</li>
-            <li><b>执行匹配</b>：回到工作台点「执行视觉匹配」，候选被分为完全同款 / 等效替代 / 已排除。</li>
-            <li><b>比价询价</b>：「生成比价结论」看价格与成交条件；询价工作台逐家出话术、回贴报价。</li>
+            <li><b>建目标款</b>：工作台「＋ 新建目标款」，填名称并上传图片（视觉匹配必须要有图）。</li>
+            <li><b>找货源</b>：在 02 区填关键词，点「从 1688 抓候选」。智能体用你已登录的浏览器搜 1688，把商品连同<b>真实店铺名、标价、主图</b>一起入库，一次 20 件，不重复计入。</li>
+            <li><b>执行视觉匹配</b>：候选被分成完全同款 / 等效替代 / 已排除。只有前两类会进入询价——连是不是这款都没确认就去问价，卖家报回来的数字跟目标款没关系，还像在乱发。</li>
+            <li><b>自动询价</b>：询价工作台点「⚡ 自动询价」，智能体逐家开旺旺：发询价 → 只补问没答的项 → 拿市场最低价回头议价 → 收敛。<br><span class="muted">卖家回话是后台自己取的，页面每 5 秒跟上一次，进度、缺口、轮次会自己变——不用刷新；切到别的标签页也会继续跟，标题上会显示未读。</span></li>
+            <li><b>表怎么看</b>：询价表按状态分成「在谈 / 已报价 / 待询价 / 已排除」几组，<b>默认只展开在谈的</b>，其余折成一行，抓几十个候选也不会铺成两屏。点组标题展开或收起；02 区「候选池」点一档，下表就只剩那一档。</li>
           </ol>
         </div>
 
         <div class="tut-block">
-          <h3><span class="zone-index">02</span>演示视频</h3>
-          <div class="demo-videos">
-            <div class="demo-video">
-              <video controls preload="metadata" src="/static/videos/demo-agent.mp4"></video>
-              <div class="cap">
-                <div class="t"><span class="n">方式一</span>智能体自动分析</div>
-                <div class="s">一句话下达目标 → ReAct 智能体自主调用工具（查看目标款 → 视觉匹配 → 比价），推理轨迹实时可见 → 输出比价结论与采购建议。</div>
-              </div>
-            </div>
-            <div class="demo-video">
-              <video controls preload="metadata" src="/static/videos/demo-manual.mp4"></video>
-              <div class="cap">
-                <div class="t"><span class="n">方式二</span>书签手动导入</div>
-                <div class="s">在导入页取书签 → 打开 1688 搜索结果页点一下书签 → 候选商品批量入库 → 执行视觉匹配分出同款/替代 → 生成比价结论。</div>
-              </div>
-            </div>
-            <div class="demo-video">
-              <video controls preload="metadata" src="/static/videos/demo-inquiry.mp4"></video>
-              <div class="cap">
-                <div class="t"><span class="n">进阶</span>询价闭环</div>
-                <div class="s">复制话术去旺旺问价 → 回贴卖家回复原话 → 自动解析出价格 / MOQ / 含税 / 现货 / 发货时效 / 阶梯价 → 重算比价结论，报价行自动排前。</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="tut-block">
-          <h3><span class="zone-index">03</span>面试场景应对</h3>
-          <p class="muted" style="font-size:12px;margin:6px 0 0">面试官给出任何商品时，全程动态响应，无需提前准备：</p>
+          <h3><span class="zone-index">02</span>三分钟看完一次谈判</h3>
+          <p class="muted" style="font-size:12px;margin:6px 0 10px">询价工作台右上角两个按钮，走的是同一条决策逻辑，区别只在对面是谁：</p>
           <ol class="tut-list">
-            <li>打开该商品的 1688 详情页。</li>
-            <li>在「导入书签」页勾选「将此页商品设为新目标款」。</li>
-            <li>点书签 → 自动创建目标款并导入该商品。</li>
-            <li>再搜同类关键词，点书签批量导入候选。</li>
-            <li>回工作台点「执行视觉匹配」→ 出分层结果，继续比价与询价。</li>
+            <li><b>▷ 演示一遍</b>：剧本卖家用三分钟跑完「询价 → 补问缺口 → 议价 → 收工」，<b>不碰真实账号、不用等卖家在线</b>。想看完整过程就看这个。</li>
+            <li><b>⚡ 自动询价</b>：真实发到你已登录的 1688。发送那一刻会截图存证，所以即使卖家几小时后才回，也能证明消息确实是它发的、不是人贴的。</li>
           </ol>
+          <p class="muted" style="font-size:12px;margin:10px 0 0">点会话里的「对话」看完整往返。中间那些灰底带「决策」的行是它每一步的判断依据，不是事后编的说明——包括「还缺：是否含税、运费怎么算」这种缺口清单。</p>
+        </div>
+
+        <div class="tut-block">
+          <h3><span class="zone-index">03</span>它按什么规则谈</h3>
+          <ol class="tut-list">
+            <li><b>只问缺的</b>：卖家答过的项不再重复问；同一句不会连发两遍。</li>
+            <li><b>卖家说「我去问一下」就等</b>，不催不刷屏；对方报完价才回到议价。</li>
+            <li><b>要微信 / 电话 / 站外聊 → 立刻停手转人工</b>。站外引流有风险，这条是硬规则，不是能力不够。</li>
+            <li><b>撞到验证码 → 整体暂停等人工</b>，不重试硬闯。</li>
+            <li><b>配额</b>：单次批量上限 8 家、每日 25 家、一家店一个款只聊一次，发送之间还有随机静默。</li>
+          </ol>
+          <p class="muted" style="font-size:12px;margin:10px 0 0">演示实例（给别人看的那份）会拒掉「⚡ 自动询价」，只让跑剧本——避免有人拿着你的号给真卖家发消息。要导入单个指定商品而不想撞详情页的滑块，用下面的书签方式。</p>
+          <p style="margin-top:10px">
+            <button type="button" class="btn default sm" onclick="showTab('import')">打开书签导入（兜底通道）</button>
+          </p>
+        </div>
+
+        <div class="tut-block">
+          <h3><span class="zone-index">04</span>现场被给一个商品时</h3>
+          <p class="muted" style="font-size:12px;margin:6px 0 0">对方随手丢一个款过来，全程动态响应，不需要提前准备数据：</p>
+          <ol class="tut-list">
+            <li>切到「书签导入」，勾上「将此页商品设为新目标款」，在 1688 详情页点一下书签 → 目标款和这一件候选同时建好。</li>
+            <li>回工作台，在 02 区填同类关键词，点「从 1688 抓候选」→ 20 件同类批量入库。</li>
+            <li>点「执行视觉匹配」，分出完全同款 / 等效替代 / 已排除。</li>
+            <li>点「⚡ 自动询价」，它自己去谈；谈的过程中点「对话」能实时看。</li>
+            <li>讲的时候盯住会话里的「决策」行——那是它自己判断出来的，不是照着剧本念。</li>
+          </ol>
+          <p class="muted" style="font-size:12px;margin:10px 0 0"><b>开场前检查</b>：抓取浏览器是否已启动并保持登录（没登录会让「找货源」和「自动询价」都失败）；挑一家缓存过旺旺号的店开场，能绕开详情页的滑块。</p>
         </div>
       </div>
     </div>
 
   </main>
+
+  <!-- 会话抽屉：看智能体到底在跟卖家聊什么，随时接管 -->
+  <div class="drawer-mask" id="drawer-mask" onclick="closeSession()"></div>
+  <aside class="drawer" id="session-drawer" aria-label="卖家会话">
+    <div class="drawer-head">
+      <div style="min-width:0">
+        <h3 id="sd-title">卖家会话</h3>
+        <div class="drawer-sub" id="sd-sub"></div>
+      </div>
+      <button type="button" class="drawer-close" onclick="closeSession()" title="关闭（Esc）">×</button>
+    </div>
+    <div class="chat-meta" id="sd-meta"></div>
+    <div class="chat-log" id="sd-log"></div>
+    <div class="drawer-foot">
+      <div class="row">
+        <input id="sd-input" type="text" placeholder="人工插一句话…"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();sendInject()}">
+        <button type="button" class="btn primary sm" onclick="sendInject()">发送</button>
+        <button type="button" class="btn ghost sm" id="sd-pause" onclick="togglePause()">暂停自动</button>
+      </div>
+      <p class="drawer-hint" id="sd-hint"></p>
+    </div>
+  </aside>
 </div>
 
 <!-- JavaScript 模块加载 -->
@@ -333,6 +354,7 @@
 <script src="js/agent.js"></script>
 <script src="js/comparison.js"></script>
 <script src="js/inquiry.js"></script>
+<script src="js/session.js"></script>
 <script src="js/import.js"></script>
 
 <script>

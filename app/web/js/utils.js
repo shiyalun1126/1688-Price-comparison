@@ -112,6 +112,19 @@ function fmtLeadTime(h) {
   return h < 24 ? `${h}小时内发货` : `${Math.round(h / 24)}天内发货`;
 }
 
+/** 「3 分钟前」这种粗粒度相对时间，用于在谈名单；超过一周回落到日期 */
+function timeAgo(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const sec = (Date.now() - t) / 1000;
+  if (sec < 60) return '刚刚';
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  if (sec < 86400 * 7) return `${Math.floor(sec / 86400)} 天前`;
+  return fmtDateTime(iso).slice(0, 10);
+}
+
 function priceAge(iso) {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -157,5 +170,5 @@ const TIER_CN = { exact: '✅ 完全同款', equivalent: '⚠️ 等效替代', 
 const SRC_CN = { listed: '标价', quoted: '报价' };
 const TAX_CN = { included: '含税', excluded: '不含税', unknown: '含税未知' };
 const STOCK_CN = { in_stock: '✅ 有现货', pre_sale: '🕐 预售', custom: '🛠 定制', unknown: '现货未知' };
-const STATUS_CN = { pending: '未询价', draft: '话术已备', sent: '已发送', replied: '已回复', quoted: '已报价', closed: '已关闭' };
+const STATUS_CN = { pending: '未询价', draft: '话术已备', sending: '发送中', sent: '已发送', following_up: '追问中', negotiating: '议价中', replied: '已回复', quoted: '已报价', escalated: '需人工', closed: '已关闭', expired: '已超时' };
 // TOOL_CN 与 PLAN_MARK 归 agent.js（此处曾重复声明，const 撞名会让 agent.js 整体不执行）

@@ -9,27 +9,36 @@ import json
 import subprocess
 import sys
 
-import httpx
-
 REPO = "shiyalun1126/1688-Price-comparison"
 API = f"https://api.github.com/repos/{REPO}"
 
 token = subprocess.check_output(["gh", "auth", "token"], text=True).strip()
-client = httpx.AsyncClient(
-    timeout=httpx.Timeout(120.0),
-    headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-)
 
 
 def run(*args):
     return subprocess.check_output(args, text=True, encoding="utf-8").strip()
 
 
-async def api(method, path, js=None):
-    r = await client.request(method, f"{API}{path}", json=js)
-    if r.status_code >= 300:
-        raise RuntimeError(f"{method} {path} -> {r.status_code}: {r.text[:300]}")
-    return r.json() if r.text else {}
+def api(method, path, js=None):
+    """走 curl 而不是 httpx：本机代理对 httpx 的 TLS 握手不稳，间歇性 SSL EOF。"""
+    cmd = [
+        "curl", "-sS", "--max-time", "120",
+        "--retry", "4", "--retry-delay", "2", "--retry-all-errors",
+        "-X", method,
+        "-H", f"Authorization: Bearer {token}",
+        "-H", "Accept: application/vnd.github+json",
+    ]
+    if js is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(js)]
+    cmd.append(f"{API}{path}")
+    r = subprocess.run(cmd, capture_output=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"{method} {path} curl 失败: {r.stderr.decode('utf-8','replace')[:200]}")
+    out = r.stdout.decode("utf-8", "replace").strip()
+    data = json.loads(out) if out else {}
+    if isinstance(data, dict) and "message" in data and "sha" not in data and "ref" not in data:
+        raise RuntimeError(f"{method} {path} -> {data.get('message')}")
+    return data
 
 
 async def push_commit(remote_parent_sha, commit_sha, diff_parent_sha):
@@ -53,18 +62,18 @@ async def push_commit(remote_parent_sha, commit_sha, diff_parent_sha):
         # blob 已存在于远程吗（如未变更过的二进制）——直接引用本地 git 的 sha 即可，
         # 若远程没有则上传
         try:
-            await api("GET", f"/git/blobs/{blob_sha}")
+            api("GET", f"/git/blobs/{blob_sha}")
         except RuntimeError:
             raw = subprocess.check_output(["git", "cat-file", "blob", blob_sha])
-            created = await api("POST", "/git/blobs", {
+            created = api("POST", "/git/blobs", {
                 "content": base64.b64encode(raw).decode(), "encoding": "base64"})
             assert created["sha"] == blob_sha, f"blob sha 不符: {path}"
         entries.append({"path": path, "mode": mode, "type": "blob", "sha": blob_sha})
         blobs += 1
 
-    parent = await api("GET", f"/git/commits/{remote_parent_sha}")
-    tree = await api("POST", "/git/trees", {"base_tree": parent["tree"]["sha"], "tree": entries})
-    commit = await api("POST", "/git/commits", {
+    parent = api("GET", f"/git/commits/{remote_parent_sha}")
+    tree = api("POST", "/git/trees", {"base_tree": parent["tree"]["sha"], "tree": entries})
+    commit = api("POST", "/git/commits", {
         "message": msg, "tree": tree["sha"], "parents": [remote_parent_sha],
         "author": {"name": an, "email": ae, "date": ad},
         "committer": {"name": cn, "email": ce, "date": cd},
@@ -82,7 +91,7 @@ async def main():
     if parent_override:
         remote_sha = parent_override
     else:
-        ref = await api("GET", "/git/ref/heads/main")
+        ref = api("GET", "/git/ref/heads/main")
         remote_sha = ref["object"]["sha"]
     print("起点 parent:", remote_sha[:7])
 
@@ -92,7 +101,7 @@ async def main():
         parent = await push_commit(parent, c, local_diff_parent)
 
     force = parent_override is not None
-    await api("PATCH", "/git/refs/heads/main", {"sha": parent, "force": force})
+    api("PATCH", "/git/refs/heads/main", {"sha": parent, "force": force})
     print(f"=== 推送完成，远程 main = {parent[:7]}" + ("（force）" if force else "") + " ===")
 
 

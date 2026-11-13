@@ -220,6 +220,7 @@ python scripts/start_all.py     # 或 Windows 下直接双击 start.bat
 | GET/POST | `/api/targets` | 目标款列表 / 创建 |
 | POST | `/api/targets/from-url` | 书签从 URL 创建目标款 |
 | POST | `/api/targets/{id}/crawl` | 按关键词搜索 1688 并批量导入候选（页面上「找货源」按钮，单次上限 40） |
+| GET | `/api/browser/status` | 抓取浏览器（CDP 9222）就绪探针：只探端口，返回 `ready` / `start_cmd`，前端小圆点每 15 秒问一次 |
 | POST | `/api/import-product` | 书签导入候选商品（自动建店铺） |
 | POST | `/api/targets/{id}/match` | 视觉匹配（默认增量，`?incremental=false` 强制全量） |
 | GET | `/api/targets/{id}/inquiries` | 询价工作台列表（按核验分层 + 价格排序） |

@@ -138,6 +138,10 @@
               <input id="crawl-keywords" class="grow" placeholder="关键词，例：德训鞋 男 复古 板鞋"
                      onkeydown="if(event.key==='Enter'){event.preventDefault();crawlCandidates()}">
               <button type="button" class="btn primary sm" id="btn-crawl" onclick="crawlCandidates()">从 1688 抓候选</button>
+              <button type="button" class="crawl-status" id="crawl-status" onclick="onBrowserChip()"
+                      aria-label="抓取浏览器状态" title="抓取浏览器（CDP 9222）状态，点一下看怎么启动">
+                <span class="cs-dot" aria-hidden="true"></span><span class="cs-text" aria-live="polite">检查中…</span>
+              </button>
               <span class="muted" id="crawl-hint" style="font-size:11px"></span>
             </div>
             <div class="sub-row" id="cand-pool-row">
@@ -210,7 +214,7 @@
                      onkeydown="if(event.key==='Enter')runAgent()">
               <button type="button" class="btn primary" id="btn-agent" onclick="runAgent()">分析</button>
             </div>
-            <div class="list console-chips">
+            <div class="console-chips">
               <span class="chip" onclick="setGoal('帮我分析这个款哪家最便宜，给出采购建议')">哪家最便宜？</span>
               <span class="chip" onclick="setGoal('这个款的数据够不够做比价？有什么问题')">数据够用吗？</span>
               <span class="chip" onclick="setGoal('找出同款，并按价格排序，告诉我能省多少')">比价排序</span>

@@ -153,8 +153,11 @@ function pickInqFilter(key) {
   if (key === 'all') return;
   const zone = document.getElementById('zone-inquiry');
   if (!zone) return;
-  if (typeof unfoldZone === 'function') unfoldZone(zone);
-  zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (typeof focusZone === 'function') focusZone(zone);
+  else {
+    if (typeof unfoldZone === 'function') unfoldZone(zone);
+    zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 // ==================== 按「要不要管它」分组 ====================

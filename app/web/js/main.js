@@ -261,12 +261,7 @@ async function updatePipeline() {
   if (ss) ss.textContent = new Set(products.map(p => p.shop_id).filter(Boolean)).size;
 }
 document.querySelectorAll('.pipe-step').forEach(el => {
-  el.addEventListener('click', () => {
-    const zone = document.getElementById(el.dataset.zone);
-    if (!zone) return;
-    unfoldZone(zone);                   // 折叠着还滚过去，会看到一片空白
-    zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+  el.addEventListener('click', () => focusZone(el.dataset.zone));
 });
 
 // ==================== 区块折叠 ====================
@@ -293,6 +288,28 @@ function toggleZone(zone, force) {
 }
 
 function unfoldZone(zone) { toggleZone(zone, false); }
+
+/** 滚到某个区块：先摊开 → 让出 sticky 顶栏的高度 → 到了闪一下。
+ *  直接 scrollIntoView 会把区块顶到视口 0 位，标题正好被 58px 的顶栏盖住。 */
+function prefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function focusZone(zone) {
+  if (typeof zone === 'string') zone = document.getElementById(zone);
+  if (!zone) return;
+  unfoldZone(zone);
+  const bar = document.querySelector('.topbar');
+  const offset = (bar ? bar.offsetHeight : 58) + 16;
+  const top = zone.getBoundingClientRect().top + window.scrollY - offset;
+  window.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  // 落点提示：重播一次边框闪动
+  zone.classList.remove('is-flash');
+  void zone.offsetWidth;
+  zone.classList.add('is-flash');
+  clearTimeout(zone._flashTimer);
+  zone._flashTimer = setTimeout(() => zone.classList.remove('is-flash'), 1200);
+}
 
 (function initZoneFold() {
   const set = loadFoldedZones();
@@ -327,6 +344,55 @@ async function createShop() {
   loadShops();
 }
 
+// ==================== 抓取浏览器状态 ====================
+// 以前只有点了「从 1688 抓候选」才知道浏览器没开，白等一趟。把状态摆到按钮旁边，
+// 15 秒跟一次（走 /api/browser/status，纯本地端口探测，不打开任何页面）。
+// 三态：null = 问不到（后端没起 / 正在问），true/false = 后端的结论。
+// 后端不通时绝不能显示「未启动」——那是把「我不知道」说成了「没有」。
+let browserReady = null;
+let browserStartCmd = '';
+
+async function refreshBrowserStatus() {
+  const chip = document.getElementById('crawl-status');
+  if (!chip) return;
+  let r = null;
+  try { r = await api('/api/browser/status'); } catch (e) { r = null; }
+  const known = !!(r && r.ok !== false && typeof r.ready === 'boolean');
+  const ready = known && r.ready === true;
+  browserReady = known ? ready : null;
+  if (known && r.start_cmd) browserStartCmd = r.start_cmd;
+
+  chip.classList.toggle('ready', ready);
+  chip.classList.toggle('down', known && !ready);
+  chip.classList.toggle('unknown', !known);
+  const label = !known ? '状态未知' : (ready ? '浏览器就绪' : '浏览器未启动');
+  const text = chip.querySelector('.cs-text');
+  if (text) text.textContent = label;
+  chip.setAttribute('aria-label', `抓取浏览器状态：${label}`);
+  chip.title = !known ? '问不到后端（服务没起？），点一下看怎么办'
+    : ready ? '已连上抓取浏览器（CDP 9222），可以直接抓'
+    : '抓取浏览器没开，点一下看启动命令';
+}
+
+function onBrowserChip() {
+  const hint = document.getElementById('crawl-hint');
+  if (!hint) return;
+  if (browserReady === true) { hint.textContent = '浏览器在线，填关键词直接抓（约 20 秒）'; return; }
+  if (browserReady === null) {
+    hint.textContent = '问不到后端状态：先确认服务在 127.0.0.1:8000 起着，再刷新本页';
+    return;
+  }
+  const cmd = browserStartCmd || 'python scripts/start_browser.py --hold';
+  hint.textContent = `先在项目目录执行：${cmd}（首次要扫码登录 1688）`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd)
+      .then(() => { hint.textContent = `启动命令已复制，粘到终端执行：${cmd}`; })
+      .catch(() => {});
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => refreshBrowserStatus());
+
 // ==================== 找货源（关键词抓取） ====================
 async function crawlCandidates() {
   if (!currentTargetId) { alert('请先选择目标款'); return; }
@@ -335,6 +401,19 @@ async function crawlCandidates() {
   const hint = document.getElementById('crawl-hint');
   const kw = (input.value || '').trim();
   if (!kw) { input.focus(); if (hint) hint.textContent = '先填关键词'; return; }
+
+  // 已知没开就别等那 20 秒：先跟一次状态（可能你刚在终端起了），还是没开就直说
+  if (browserReady !== true) {
+    await refreshBrowserStatus();
+    if (browserReady === null) {
+      if (hint) hint.textContent = '问不到后端状态：先确认服务在 127.0.0.1:8000 起着';
+      return;
+    }
+    if (browserReady === false) {
+      if (hint) hint.textContent = '抓取浏览器没开，点右边那个灰点看启动命令';
+      return;
+    }
+  }
 
   const old = btn.textContent;
   btn.disabled = true;
@@ -358,6 +437,7 @@ async function crawlCandidates() {
   } finally {
     btn.disabled = false;
     btn.textContent = old;
+    refreshBrowserStatus();          // 抓到一半浏览器被关掉也能立刻反映
     updatePipeline();
     await refreshInquiries();
     // 刚抓进来的都在「待询价」组，而那组默认收起；抓完主动摊开并滚过去，
@@ -368,7 +448,7 @@ async function crawlCandidates() {
       try { localStorage.setItem(INQ_OPEN_KEY, JSON.stringify([...open])); } catch (e) {}
       renderWorkbench();
       const zone = document.getElementById('zone-inquiry');
-      if (zone) { unfoldZone(zone); zone.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      if (zone) focusZone(zone);
     }
   }
 }

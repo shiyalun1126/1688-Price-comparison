@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from app.comparison.comparison import run_comparison
@@ -392,6 +393,28 @@ def import_product(request: Request, body: ImportProduct):
 class CrawlBody(BaseModel):
     keywords: str
     max_items: int = 20
+
+
+@router.get("/browser/status")
+def browser_status(response: Response):
+    """抓取浏览器（CDP 9222）是否就绪。
+
+    只查端口，不打开页面、不碰 1688 —— 页面上那个小圆点每几秒问一次，
+    必须是纯本地判断。
+    """
+    from app.browser import cdp
+
+    ready = cdp.is_available()
+    # 启动命令只在这里拼一处，前端照着显示；用解释器自身路径，换 conda/venv 都不用改前端。
+    start_cmd = f'"{sys.executable}" scripts/start_browser.py --hold'
+    # 探针结果不缓存：浏览器关了还显示「就绪」，比不知道更糟
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "ok": True,
+        "ready": ready,
+        "start_cmd": start_cmd,
+        "hint": "" if ready else f"先在项目目录执行：{start_cmd}（首次需扫码登录 1688）",
+    }
 
 
 @router.post("/targets/{target_id}/crawl")

@@ -127,7 +127,7 @@ async function runComparison(force = false) {
 }
 
 function renderComparison(r) {
-  let html = `<div class="cmp-summary"><div class="trace-label" style="color:var(--accent-deep)">综述</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.summary || ''}</p></div>`;
+  let html = `<div><div class="trace-label" style="color:var(--accent-deep)">综述</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.summary || ''}</p></div>`;
   const gen = fmtDateTime(r.generated_at);
   const genAge = priceAge(r.generated_at);
   if (gen) {
@@ -171,7 +171,7 @@ function renderComparison(r) {
       + `仅「完全同款」行可硬比价（橙色底 = 当前最低同款）；等效替代 / 未核验 / 已排除仅供参考，不进入比价结论。`
       + `阶梯价与 MOQ 门槛已按 100 件基准量折算归一价；所有价格为抓取时点快照，下单前请重新确认。</p>`;
   }
-  html += `<div class="cmp-summary" style="margin-top:16px"><div class="trace-label" style="color:var(--accent-deep)">建议</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.recommendation || ''}</p></div>`;
+  html += `<div style="margin-top:16px"><div class="trace-label" style="color:var(--accent-deep)">建议</div><p style="margin:4px 0 0;font-size:13px;line-height:1.8">${r.recommendation || ''}</p></div>`;
   if (r.negotiation_script) html += `<div style="margin-top:12px"><div class="trace-label" style="color:var(--accent-deep)">议价话术</div><pre style="margin-top:6px">${r.negotiation_script}</pre></div>`;
   document.getElementById('result').innerHTML = html;
   updatePipeline();

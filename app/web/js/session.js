@@ -330,6 +330,8 @@ function startLivePolling() {
     // 标签页在后台也继续跟，只是降频到 10 秒：卖家回话不会因为你切走就丢
     if (document.hidden && liveTick % 2) return;
     await refreshAutoBar();
+    // 抓取浏览器可能被关掉/刚起起来，15 秒跟一次就够（本地端口探测，很轻）
+    if (liveTick % 3 === 0 && typeof refreshBrowserStatus === 'function') refreshBrowserStatus();
     if (currentTargetId) await refreshInquiries({ silent: true });
   }, 5000);
 }

@@ -22,29 +22,28 @@ import httpx
 REPO = "shiyalun1126/1688-Price-comparison"
 API = f"https://api.github.com/repos/{REPO}"
 
-# gh api 在本机网络下会 404（它的 HTTP 栈走的代理与 httpx 不同），
-# 直接用 httpx 打 api.github.com，token 从 gh 本地取。
+# 本机代理对 httpx 的 TLS 握手不稳定（SSL EOF），curl 走同一个代理却一直稳，
+# 所以这里统一用 curl 发请求。
 _TOKEN = subprocess.check_output(["gh", "auth", "token"], text=True).strip()
-_CLIENT = httpx.Client(
-    timeout=httpx.Timeout(60.0),
-    headers={"Authorization": f"Bearer {_TOKEN}", "Accept": "application/vnd.github+json"},
-)
 
 
 def gh(path):
-    # 代理偶尔在 TLS 握手时掐断（SSL EOF），重试几次即可
-    last = None
-    for attempt in range(5):
-        try:
-            r = _CLIENT.get(f"{API}{path}")
-        except Exception as e:          # 连接层抖动
-            last = e
-            time.sleep(1 + attempt)
-            continue
-        if r.status_code >= 300:
-            raise RuntimeError(f"GET {path} -> {r.status_code}: {r.text[:200]}")
-        return r.json()
-    raise RuntimeError(f"GET {path} 反复失败: {last}")
+    import json as _json
+    cmd = [
+        "curl", "-sS", "--max-time", "60", "--retry", "4", "--retry-delay", "2",
+        "--retry-all-errors",
+        "-H", f"Authorization: Bearer {_TOKEN}",
+        "-H", "Accept: application/vnd.github+json",
+        f"{API}{path}",
+    ]
+    r = subprocess.run(cmd, capture_output=True)
+    out = r.stdout.decode("utf-8", "replace")
+    if r.returncode != 0:
+        raise RuntimeError(f"GET {path} 失败: {r.stderr.decode('utf-8','replace')[:200]}")
+    data = _json.loads(out)
+    if isinstance(data, dict) and data.get("message") == "Not Found":
+        raise RuntimeError(f"GET {path} -> 404 Not Found")
+    return data
 
 
 def git(*args, inp=None):
@@ -80,6 +79,27 @@ def build_commit(c, tz):
     return body
 
 
+def ensure_tree(sha):
+    """确保本地有这个 tree 对象；缺的（早期 API 推送时新建的子目录树）递归补建。"""
+    if has_object(sha):
+        return
+    t = gh(f"/git/trees/{sha}")
+    for e in t["tree"]:
+        if e["type"] == "tree":
+            ensure_tree(e["sha"])
+        elif not has_object(e["sha"]):
+            raise RuntimeError(f"缺 blob {e['sha'][:7]}（{e['path']}），本地没有这个对象")
+    entries = [
+        f"{e['mode']} {'tree' if e['type'] == 'tree' else 'blob'} {e['sha']}\t{e['path']}"
+        for e in t["tree"]
+    ]
+    r = git("mktree", inp="\n".join(entries) + "\n")
+    if r.returncode != 0:
+        raise RuntimeError("mktree 失败: " + r.stderr[:200])
+    if r.stdout.strip() != sha:
+        raise RuntimeError(f"mktree sha 不符: {r.stdout.strip()[:7]} != {sha[:7]}")
+
+
 def main():
     ref = gh(f"/git/ref/heads/main")
     head = ref["object"]["sha"]
@@ -101,18 +121,7 @@ def main():
         if has_object(c["sha"]):
             continue
         tree = c["tree"]["sha"]
-        if not has_object(tree):
-            # 极端情况：本地缺 tree，用 API 拉回来重建
-            t = gh(f"/git/trees/{tree}")
-            entries = [
-                f"{e['mode']} {'tree' if e['type'] == 'tree' else 'blob'} {e['sha']}\t{e['path']}"
-                for e in t["tree"]
-            ]
-            r = git("mktree", inp="\n".join(entries) + "\n")
-            if r.returncode != 0:
-                print("mktree 失败:", r.stderr[:200])
-                sys.exit(1)
-            print("  重建 tree:", tree[:7])
+        ensure_tree(tree)
         for p in c["parents"]:
             if not has_object(p["sha"]):
                 print(f"  父 commit 缺失 {p['sha'][:7]}，先重建它")

@@ -8,7 +8,7 @@
     D:/miniconda3/python.exe scripts/verify_multiround.py --session s-xxxxxxxx
     D:/miniconda3/python.exe scripts/verify_multiround.py --no-llm     # 只看规则模板
 
---session 会从库里取该会话的卖家原话按序重放；不传则用内置的沃乐克案例。
+--session 会从库里取该会话的卖家原话按序重放；不传则用内置的某家居店案例。
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from app.models.entities import InquirySession, Quote  # noqa: E402
 from app.models.enums import MsgRole, StockStatus, TaxStatus  # noqa: E402
 from app.store.db import Store  # noqa: E402
 
-# 2026-11-06 沃乐克真实对话（原话，未改写）
+# 2026-11-06 某家居店真实对话（原话，未改写）
 CASE = [
     "我在看这个商品 700ML纹喷雾水杯高颜值冰裂大容量运动吸管运动陶瓷不锈钢杯单环 ￥56.90",
     "这款是有现货在的 支持1个起批",

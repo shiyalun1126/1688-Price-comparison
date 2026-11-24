@@ -25,6 +25,11 @@ uvicorn.log
 素材/
 eval/
 
+# 一次性调试脚本与上传工具（本地保留，不入公开仓库）
+scripts/archive/
+scripts/_bm_*.js
+scripts/debug/align_local_to_remote.py
+
 # 工具
 .pytest_cache/
 .ruff_cache/

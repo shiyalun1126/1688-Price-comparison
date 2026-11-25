@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: 语法与接口冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 这一步同时验证 pyproject 的依赖声明是否完整：
+      # 干净环境里能装上，别人 clone 下来才跑得起来。
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: 语法编译
+        run: python -m compileall -q app scripts tests
+
+      - name: 关键模块导入
+        run: |
+          python - <<'PY'
+          import app.main
+          import app.agent.tools
+          import app.inquire.dialogue
+          import app.inquire.engine
+          import app.matcher.matcher
+          import app.comparison.comparison
+          import app.browser.chat
+          print("imports ok")
+          PY
+
+      # 不配任何 API key、不登录 1688、空数据库启动，
+      # 验证「书上说的离线可跑」这句话是真的。
+      - name: 接口冒烟（空库 + 无密钥）
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from app.main import app
+
+          client = TestClient(app)
+          checks = {
+              "GET /": client.get("/"),
+              "GET /api/targets": client.get("/api/targets"),
+              "GET /api/inquiry-engine": client.get("/api/inquiry-engine"),
+              "GET /api/browser/status": client.get("/api/browser/status"),
+          }
+          for name, resp in checks.items():
+              print(f"{name} -> {resp.status_code}")
+              assert resp.status_code == 200, f"{name} 返回 {resp.status_code}"
+          print("smoke ok")
+          PY

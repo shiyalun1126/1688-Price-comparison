@@ -1,5 +1,7 @@
 # 1688 比价智能体（问渠 Springhead）
 
+[![CI](https://github.com/shiyalun1126/1688-Price-comparison/actions/workflows/ci.yml/badge.svg)](https://github.com/shiyalun1126/1688-Price-comparison/actions/workflows/ci.yml)
+
 全平台全品类的「以款找货源 + 比价」智能体（服装、数码、百货等均适用）。录入目标款（图片/文字描述），在 1688 全网召回候选店铺，AI 视觉判定同款/等效替代，逐家询价，最后给出比价结论、采购建议与议价话术。
 
 ## 界面预览

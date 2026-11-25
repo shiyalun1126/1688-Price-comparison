@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "1688-price-compare-agent"
 version = "0.1.0"
@@ -20,6 +24,11 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.4",
 ]
+
+[tool.setuptools]
+# 只把 app 当发布包：scripts/ 与 tests/ 是本地脚本目录，若一并参与发现，
+# setuptools 会判定 flat-layout 存在多个顶层包并直接拒绝构建（pip install -e . 失败）。
+packages = { find = { include = ["app*"] } }
 
 [tool.ruff]
 line-length = 100

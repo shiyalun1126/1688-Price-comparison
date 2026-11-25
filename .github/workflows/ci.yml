@@ -62,3 +62,36 @@ jobs:
               assert resp.status_code == 200, f"{name} 返回 {resp.status_code}"
           print("smoke ok")
           PY
+
+      # README「先看效果」那条命令必须一直有效：它决定别人 clone 后
+      # 看到的是一张白界面还是一个有数据的工作台。
+      - name: 演示数据可复现
+        run: |
+          python -m scripts.seed_demo --db data/ci_demo.db
+          APP_DB=data/ci_demo.db python - <<'PY'
+          from fastapi.testclient import TestClient
+          from app.main import app
+
+          client = TestClient(app)
+          targets = client.get("/api/targets").json()
+          assert len(targets) == 2, f"目标款应为 2 个，实际 {len(targets)}"
+
+          tid = next(t["id"] for t in targets if "卫衣" in t["name"])
+          products = client.get(f"/api/targets/{tid}/products").json()
+          assert len(products) == 12, f"候选商品应为 12 个，实际 {len(products)}"
+          assert all(p["image_paths"] for p in products if p["id"] != "demo-prod-a11")
+
+          cmp = client.get(f"/api/targets/{tid}/comparison").json()
+          tiers = {r["tier"] for r in cmp["rows"]}
+          assert {"exact", "equivalent", "rejected"} <= tiers, f"分层缺失：{tiers}"
+
+          # 4 段谈判记录都要带会话（auto=True），否则抽屉点开是空的
+          inqs = client.get(f"/api/targets/{tid}/inquiries").json()
+          auto = [i for i in inqs if i.get("auto")]
+          assert len(auto) == 4, f"带会话的询价应为 4 条，实际 {len(auto)}"
+
+          # 未收工的演示会话必须已暂停，引擎启动后不会再给卖家发消息
+          active = client.get("/api/sessions").json()["sessions"]
+          assert all(s["paused"] for s in active), "存在会被引擎推进的演示会话"
+          print("demo seed ok:", len(products), "候选 /", len(auto), "会话")
+          PY

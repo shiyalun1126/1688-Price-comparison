@@ -216,6 +216,21 @@ python scripts/start_all.py     # 或 Windows 下直接双击 start.bat
 - 书签页（兜底）：`/bookmarklet`（拿「一键导入」书签，去 1688 商品页点击即入库；从「使用说明」页进入）
 - 智能体控制台：输入目标（如「帮我看看这个款哪家最便宜」），看自主推理轨迹与执行计划
 
+### 先看效果：不配 key、不登录 1688
+
+仓库不跟踪 `data/`，空库打开是一张白界面。想直接看到「有候选、有报价、有谈判记录、有比价结论」的状态，跑一条命令：
+
+```bash
+python -m scripts.seed_demo     # 写入演示数据
+python scripts/start_all.py
+```
+
+写入 2 个目标款、16 个候选商品、16 家店铺、4 段完整谈判记录（已收工 / 追问中 / 转人工 / 超时关闭各一）和 2 份比价结论。主图是程序生成的示意 SVG，不是实拍图，也不用联网。
+
+- 演示数据 id 全部以 `demo-` 开头，`python -m scripts.seed_demo --reset` 一键清除，只删这些
+- 目标库里已有你自己的数据时默认**拒绝写入**；想单独跑一份演示库，用 `python -m scripts.seed_demo --db data/demo.db` 生成，再 `APP_DB=data/demo.db python scripts/start_all.py` 启动
+- 演示会话都落在终态或人工暂停，引擎启动后不会真的给卖家发消息
+
 ## API 一览
 
 | 方法 | 路径 | 说明 |

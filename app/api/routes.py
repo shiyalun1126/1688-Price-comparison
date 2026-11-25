@@ -39,6 +39,12 @@ def _dump_target(ts: TargetStyle) -> dict:
 def _dump_product(p: Product) -> dict:
     d = p.model_dump()
     d["image_paths"] = to_web_paths(p.image_paths)
+    # 前端流程步数与候选池统一读 tier：口径与 /inquiries 保持一致，
+    # 否则「已排除」会退回 match_tier 被算成等效替代。
+    if p.match_status == MatchStatus.REJECTED:
+        d["tier"] = "rejected"
+    else:
+        d["tier"] = p.match_tier.value if p.match_tier else "unverified"
     return d
 
 
